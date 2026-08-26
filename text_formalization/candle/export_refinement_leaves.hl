@@ -22,7 +22,7 @@ needs (Filename.concat candle_flyspeck_dir
 
 save_pft_stream_target "flyspeck$Basics.LENGTH3"
   Candle_leaf_basics.LENGTH3;;
-save_pft_stream_target "flyspeck$Vukhacky.REDUCE_WITH_DIV_Euler_lemma"
+save_pft_stream_target "flyspeck$Vukhacky_tactics.REDUCE_WITH_DIV_Euler_lemma"
   Candle_leaf_vukhacky.REDUCE_WITH_DIV_Euler_lemma;;
 
 let candle_refinement_export_stats = pft_stream_stats();;
