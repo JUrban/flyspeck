@@ -26,3 +26,21 @@ needs "/path/to/flyspeck/text_formalization/candle/export_basics_length3.hl";;
 
 The output remains hostile input to the compiled Candle checker.  Exporter
 success alone is not acceptance evidence.
+
+`export_restartable_build.hl` is the full-build driver.  It starts the bounded
+producer before `Multivariate/flyspeck.ml`, follows either
+`Build.build_sequence_main_statement` or `Build.build_sequence_full`, and
+saves the corresponding final theorem.  With process checkpoints enabled, it
+records a flushed PFT byte boundary after the foundation and every configured
+number of source files, requests a DMTCP checkpoint-and-kill, then validates
+and truncates the output to that boundary when restored.  Use the project
+supervisor `scripts/run-restartable-flyspeck-export.sh`; do not invoke the
+checkpoint path by hand.  The supervisor pins repository heads in its state
+directory, can resume an interrupted batch from the newest local image, keeps
+only the latest generation, structurally inspects the completed trace, and by
+default replays it through compiled Candle.
+
+DMTCP images contain executable process memory.  Restore only images created
+locally for the same locked run; they are not proof artifacts and must never be
+accepted as untrusted input.  Only the final PFT replay result is logical
+evidence.

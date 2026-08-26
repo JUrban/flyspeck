@@ -1,0 +1,104 @@
+(* Restartable direct PFT export for a real Flyspeck build sequence.  DMTCP
+   images are operational producer state, never logical evidence. *)
+
+let candle_build_env name =
+  try Sys.getenv name
+  with Not_found -> failwith (name ^ " is not set");;
+
+let candle_build_flyspeck_dir = candle_build_env "FLYSPECK_DIR";;
+let candle_build_hollight_dir = candle_build_env "HOLLIGHT_DIR";;
+let candle_build_output = candle_build_env "CANDLE_PFT_OUTPUT";;
+let candle_build_status = candle_build_env "CANDLE_PFT_CHECKPOINT_STATUS";;
+let candle_build_sequence = candle_build_env "CANDLE_FLYSPECK_SEQUENCE";;
+
+let candle_build_checkpoints =
+  try Sys.getenv "CANDLE_PFT_PROCESS_CHECKPOINTS" = "1"
+  with Not_found -> false;;
+
+let candle_build_checkpoint_interval =
+  try int_of_string (Sys.getenv "CANDLE_PFT_CHECKPOINT_FILES")
+  with Not_found -> 10;;
+
+if candle_build_checkpoint_interval <= 0 then
+  failwith "CANDLE_PFT_CHECKPOINT_FILES must be positive";;
+
+needs (Filename.concat candle_build_hollight_dir "ProofTrace/pft.ml");;
+pft_stream_checkpoint_interval := 250000;;
+start_pft_stream candle_build_output;;
+
+(* No post-core source may silently add an axiom. *)
+let new_axiom (_:term) = failwith "new_axiom disabled during PFT export";;
+
+let candle_write_build_status phase index source checkpoint =
+  let channel = open_out candle_build_status in
+  Printf.fprintf channel
+    "%s\t%d\t%s\t%d\t%d\t%d\t%d\t%d\n"
+    phase index source checkpoint.checkpoint_offset
+    checkpoint.checkpoint_command_count checkpoint.checkpoint_type_slots
+    checkpoint.checkpoint_term_slots checkpoint.checkpoint_theorem_slots;
+  close_out channel;;
+
+let candle_process_checkpoint index source =
+  if not candle_build_checkpoints then () else begin
+    let checkpoint = prepare_pft_stream_checkpoint() in
+    candle_write_build_status "checkpoint" index source checkpoint;
+    (try ignore (Sys.command "dmtcp_command -kc")
+     with Sys_error _ -> ());
+    restore_pft_stream_checkpoint checkpoint;
+    candle_write_build_status "resumed" index source checkpoint
+  end;;
+
+(* This loads the multivariate foundation and Flyspeck's checked-in loader and
+   source-order declarations while the bounded proof sink is already active. *)
+loadt
+  (Filename.concat candle_build_flyspeck_dir "../load_flyspeck.ml");;
+candle_process_checkpoint 0 "Multivariate/flyspeck.ml";;
+
+let candle_selected_build_sequence =
+  if candle_build_sequence = "main" then Build.build_sequence_main_statement
+  else if candle_build_sequence = "full" then Build.build_sequence_full
+  else failwith "CANDLE_FLYSPECK_SEQUENCE must be main or full";;
+
+let rec candle_load_build_files index = function
+  | [] -> ()
+  | source::rest ->
+      flyspeck_needs source;
+      let next_index = index + 1 in
+      if next_index mod candle_build_checkpoint_interval = 0 then
+        candle_process_checkpoint next_index source
+      else ();
+      candle_load_build_files next_index rest;;
+
+candle_load_build_files 0 candle_selected_build_sequence;;
+
+if candle_build_sequence = "main" then
+  save_pft_stream_target
+    "flyspeck$The_main_statement.kepler_conjecture_with_assumptions"
+    The_main_statement.kepler_conjecture_with_assumptions
+else
+  save_pft_stream_target
+    "flyspeck$The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture"
+    The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture;;
+
+let candle_build_export = finish_pft_stream();;
+let candle_build_output_length =
+  let channel = open_in_bin candle_build_output in
+  let length = in_channel_length channel in
+  close_in channel;
+  length;;
+let candle_build_final_checkpoint = {
+  checkpoint_filename = candle_build_output;
+  checkpoint_offset = candle_build_output_length;
+  checkpoint_command_count = candle_build_export.export_commands - 1;
+  checkpoint_type_slots = candle_build_export.export_type_count;
+  checkpoint_term_slots = candle_build_export.export_term_count;
+  checkpoint_theorem_slots = candle_build_export.export_theorem_count
+};;
+candle_write_build_status "complete"
+  (List.length candle_selected_build_sequence)
+  candle_build_sequence candle_build_final_checkpoint;;
+Printf.printf
+  "CANDLE_RESTARTABLE_BUILD_OK sequence=%s commands=%d limits=(%d,%d,%d)\n%!"
+  candle_build_sequence candle_build_export.export_commands
+  candle_build_export.export_type_count candle_build_export.export_term_count
+  candle_build_export.export_theorem_count;;
