@@ -1,0 +1,92 @@
+(* Checked route-selection extraction from leg/basics.hl. *)
+
+let candle_flyspeck_dir =
+  try Sys.getenv "FLYSPECK_DIR" with Not_found -> Sys.getcwd();;
+
+let candle_basics_source =
+  Filename.concat candle_flyspeck_dir "leg/basics.hl";;
+
+let candle_basics_digest = Digest.to_hex (Digest.file candle_basics_source);;
+
+if candle_basics_digest <> "7d90051d1e2932d238cc8ed2f5548dd3"
+then failwith "Candle leaf: leg/basics.hl digest mismatch";;
+
+needs (Filename.concat candle_flyspeck_dir
+         "general/prove_by_refinement.hl");;
+
+let prove_by_refinement = Prove_by_refinement.prove_by_refinement;;
+
+module Candle_leaf_hales_tactic = struct
+
+let unlist tac t = tac [t];;
+
+let (WEAK_STRIP_TAC: tactic) =
+  fun gl ->
+    try (fun ttac -> FIRST [GEN_TAC; DISCH_THEN ttac]) STRIP_ASSUME_TAC gl
+    with Failure _ -> failwith "STRIP_TAC";;
+
+let WEAK_STRIP_THM_THEN =
+  FIRST_TCL [CONJUNCTS_THEN; CHOOSE_THEN];;
+
+let WEAK_STRIP_ASSUME_TAC =
+  let DISCARD_TAC th =
+    let tm = concl th in
+    fun gl ->
+      if exists (fun a -> aconv tm (concl(snd a))) (fst gl)
+      then ALL_TAC gl
+      else failwith "DISCARD_TAC: not already present" in
+  (REPEAT_TCL WEAK_STRIP_THM_THEN)
+  (fun gth -> FIRST [CONTR_TAC gth; ACCEPT_TAC gth;
+                     DISCARD_TAC gth; ASSUME_TAC gth]);;
+
+let (WEAKER_STRIP_TAC: tactic) =
+  fun gl ->
+    try (fun ttac -> FIRST [GEN_TAC; DISCH_THEN ttac])
+        WEAK_STRIP_ASSUME_TAC gl
+    with Failure _ -> failwith "STRIP_TAC";;
+
+let BY (t:tactic) gl =
+  let (a,b,c) = t gl in
+  let _ = (b = []) || failwith "by failed to finish goal" in
+  (a,b,c);;
+
+let arith = ARITH_RULE;;
+
+end;;
+
+module Candle_leaf_basics = struct
+
+open Candle_leaf_hales_tactic;;
+
+(* The following three statements and proof lists are copied verbatim from
+   the pinned leg/basics.hl proof block. *)
+
+let LENGTH1 = prove_by_refinement(
+  `!ul:(A) list. LENGTH ul = 1 ==> ul = [EL 0 ul]`,
+  [
+  REWRITE_TAC[LENGTH_EQ_CONS;arith `1 = SUC 0`;LENGTH_EQ_NIL];
+  REPEAT WEAK_STRIP_TAC;
+  BY(ASM_REWRITE_TAC[EL;HD])
+  ]);;
+
+let LENGTH2 = prove_by_refinement(
+  `!ul:(A) list. LENGTH ul = 2 ==> ul = [EL 0 ul;EL 1 ul]`,
+  [
+  REWRITE_TAC[LENGTH_EQ_CONS;arith `2 = SUC 1`];
+  REPEAT WEAK_STRIP_TAC;
+  ASM_REWRITE_TAC[];
+  FIRST_X_ASSUM (unlist ONCE_REWRITE_TAC o (MATCH_MP LENGTH1));
+  BY(REWRITE_TAC[EL;HD;arith `1 = SUC 0`;TL])
+  ]);;
+
+let LENGTH3 = prove_by_refinement(
+  `!(ul:(A)list). LENGTH ul = 3 ==> ul = [EL 0 ul; EL 1 ul; EL 2 ul]`,
+  [
+  REWRITE_TAC[LENGTH_EQ_CONS;arith `3 = SUC 2`];
+  REPEAT WEAK_STRIP_TAC;
+  ASM_REWRITE_TAC[];
+  FIRST_X_ASSUM (unlist ONCE_REWRITE_TAC o (MATCH_MP LENGTH2));
+  BY(REWRITE_TAC[EL;HD;arith `1 = SUC 0`;arith `2 = SUC 1`;TL])
+  ]);;
+
+end;;
