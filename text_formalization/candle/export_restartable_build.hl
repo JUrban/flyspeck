@@ -19,8 +19,14 @@ let candle_build_checkpoint_interval =
   try int_of_string (Sys.getenv "CANDLE_PFT_CHECKPOINT_FILES")
   with Not_found -> 10;;
 
+let candle_build_work_checkpoint_interval =
+  try int_of_string (Sys.getenv "CANDLE_PFT_CHECKPOINT_WORK_UNITS")
+  with Not_found -> 25;;
+
 if candle_build_checkpoint_interval <= 0 then
   failwith "CANDLE_PFT_CHECKPOINT_FILES must be positive";;
+if candle_build_work_checkpoint_interval <= 0 then
+  failwith "CANDLE_PFT_CHECKPOINT_WORK_UNITS must be positive";;
 
 needs (Filename.concat candle_build_hollight_dir "ProofTrace/pft.ml");;
 pft_stream_checkpoint_interval := 250000;;
@@ -48,10 +54,32 @@ let candle_process_checkpoint index source =
     candle_write_build_status "resumed" index source checkpoint
   end;;
 
+let candle_build_work_count = ref 0;;
+let candle_build_nonlin_work_count = ref 0;;
+
+let candle_has_prefix prefix value =
+  let prefix_length = String.length prefix in
+  String.length value >= prefix_length &&
+  String.sub value 0 prefix_length = prefix;;
+
+let candle_process_work_checkpoint source =
+  incr candle_build_work_count;
+  let due =
+    if candle_has_prefix "lp:" source then true
+    else begin
+      incr candle_build_nonlin_work_count;
+      !candle_build_nonlin_work_count mod
+        candle_build_work_checkpoint_interval = 0
+    end in
+  if due then
+    candle_process_checkpoint (1000000 + !candle_build_work_count) source
+  else ();;
+
 (* This loads the multivariate foundation and Flyspeck's checked-in loader and
    source-order declarations while the bounded proof sink is already active. *)
 loadt
   (Filename.concat candle_build_flyspeck_dir "../load_flyspeck.ml");;
+flyspeck_work_checkpoint := candle_process_work_checkpoint;;
 candle_process_checkpoint 0 "Multivariate/flyspeck.ml";;
 
 let candle_selected_build_sequence =
@@ -70,15 +98,13 @@ let rec candle_load_build_files index = function
       candle_load_build_files next_index rest;;
 
 candle_load_build_files 0 candle_selected_build_sequence;;
+candle_process_checkpoint (List.length candle_selected_build_sequence)
+  "build-sequence-complete";;
 
-if candle_build_sequence = "main" then
-  save_pft_stream_target
-    "flyspeck$The_main_statement.kepler_conjecture_with_assumptions"
-    The_main_statement.kepler_conjecture_with_assumptions
-else
-  save_pft_stream_target
-    "flyspeck$The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture"
-    The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture;;
+let candle_target_script =
+  if candle_build_sequence = "main" then "candle/export_main_targets.hl"
+  else "candle/export_full_targets.hl";;
+loadt (Filename.concat candle_build_flyspeck_dir candle_target_script);;
 
 let candle_build_export = finish_pft_stream();;
 let candle_build_output_length =

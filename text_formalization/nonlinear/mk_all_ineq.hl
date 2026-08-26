@@ -357,7 +357,11 @@ has_quad (concl mk_pack_nonlinear);;
 let prep_nonlinear_thml  =
     let backup_serialization = !Serialization.use_serialization in
     let _ = Serialization.use_serialization:= true in
-    let v = map Break_case_exec.prove_prep Break_case_exec.all_idv in
+    let prove_and_checkpoint idv =
+      let result = Break_case_exec.prove_prep idv in
+      let _ = (!flyspeck_work_checkpoint) ("nonlinear:" ^ idv) in
+        result in
+    let v = map prove_and_checkpoint Break_case_exec.all_idv in
     let _ = Serialization.use_serialization := backup_serialization in
        v;;
 

@@ -1,0 +1,26 @@
+(* The full Flyspeck sequence proves the LP and nonlinear premises inside HOL
+   Light.  Only the Isabelle tame-classification import remains in L2. *)
+
+module Candle_flyspeck_l2 = struct
+
+let tame_imp_kepler_conjecture =
+  let tame = `import_tame_classification` in
+  DISCH tame
+    (MATCH_MP
+      The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture
+      (CONJ (ASSUME tame) Mk_all_ineq.the_nonlinear_inequalities));;
+
+end;;
+
+save_pft_stream_target
+  "flyspeck$Linear_programming_results.linear_programming_results_th"
+  Linear_programming_results.linear_programming_results_th;;
+save_pft_stream_target
+  "flyspeck$Mk_all_ineq.the_nonlinear_inequalities"
+  Mk_all_ineq.the_nonlinear_inequalities;;
+save_pft_stream_target
+  "flyspeck$The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture"
+  The_kepler_conjecture.tame_nonlinear_imp_kepler_conjecture;;
+save_pft_stream_target
+  "flyspeck$Candle_flyspeck_l2.tame_imp_kepler_conjecture"
+  Candle_flyspeck_l2.tame_imp_kepler_conjecture;;

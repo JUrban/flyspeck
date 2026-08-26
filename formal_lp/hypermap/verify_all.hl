@@ -96,6 +96,8 @@ let verify_easy test_ids opt_good_table =
     map (fun file ->
 	   let result = verify_file test_ids opt_good_table file !k in
 	   let _ = decr k in
+	   let _ = (!flyspeck_work_checkpoint)
+	     ("lp:" ^ Filename.basename file) in
 	     result) files;;
 
 let verify_hard test_ids opt_good_table =
@@ -109,6 +111,8 @@ let verify_hard test_ids opt_good_table =
     map (fun file ->
 	   let result = verify_file test_ids opt_good_table file !k in
 	   let _ = decr k in
+	   let _ = (!flyspeck_work_checkpoint)
+	     ("lp:" ^ Filename.basename file) in
 	     result) files;;
 
 (* test_ids - if not empty, only linear programs with these ids are verified *)

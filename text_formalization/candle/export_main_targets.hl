@@ -1,0 +1,6 @@
+(* Targets for the source sequence that intentionally retains the LP,
+   nonlinear, and tame-classification assumptions. *)
+
+save_pft_stream_target
+  "flyspeck$The_main_statement.kepler_conjecture_with_assumptions"
+  The_main_statement.kepler_conjecture_with_assumptions;;

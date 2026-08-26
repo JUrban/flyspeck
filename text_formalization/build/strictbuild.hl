@@ -29,6 +29,10 @@ let flyspeck_dir =
 let hollight_dir = 
   (try Sys.getenv "HOLLIGHT_DIR" with Not_found -> Sys.getcwd());;
 
+(* Long-running certificate consumers can expose proof-neutral progress
+   boundaries without depending on any particular export driver. *)
+let flyspeck_work_checkpoint = ref (fun (_:string) -> ());;
+
 (* jfp changed mem to List.mem *)
 let add_to_load_path path =
   if List.mem path !load_path then ()
