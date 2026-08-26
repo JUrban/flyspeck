@@ -1,8 +1,29 @@
 #load "unix.cma";;
 
-(* Edit these paths *)
-let flyspeck_dir = "/home/user/flyspeck/text_formalization";;
-let hollight_dir = "/home/user/hol-light";;
+(* Prefer explicit locations, but keep the common case of launching this file
+   from the Flyspeck or HOL Light checkout convenient. *)
+let directory_containing env candidates marker =
+  let configured =
+    try [Sys.getenv env]
+    with Not_found -> candidates in
+  try
+    List.find
+      (fun directory -> Sys.file_exists (Filename.concat directory marker))
+      configured
+  with Not_found ->
+    failwith
+      ("Set " ^ env ^ " to a directory containing " ^ marker);;
+
+let launch_dir = Sys.getcwd();;
+
+let flyspeck_dir =
+  directory_containing "FLYSPECK_DIR"
+    [Filename.concat launch_dir "text_formalization"; launch_dir]
+    "build/strictbuild.hl";;
+
+let hollight_dir =
+  directory_containing "HOLLIGHT_DIR" [launch_dir]
+    "Multivariate/flyspeck.ml";;
 
 let () = Unix.putenv "FLYSPECK_DIR" flyspeck_dir;;
 let () = Unix.putenv "HOLLIGHT_DIR" hollight_dir;;
