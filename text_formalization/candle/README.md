@@ -12,6 +12,11 @@ only the small subset of Flyspeck tactic helpers used by those proofs.  This
 keeps the list/refinement route-selection test independent of the much larger
 multivariate foundation.
 
+`vukhacky_real_leaf.hl` similarly pins and extracts the real-arithmetic
+refinement proof `REDUCE_WITH_DIV_Euler_lemma` from
+`general/vukhacky_tactics.hl`.  `export_refinement_leaves.hl` emits both the
+list and real-arithmetic targets in one small trace.
+
 Run an exporter from a clean, patched HOL Light checkout with
 `HOLLIGHT_DIR`, `FLYSPECK_DIR`, and `CANDLE_PFT_OUTPUT` set.  For example:
 

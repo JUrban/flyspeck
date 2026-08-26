@@ -1,0 +1,30 @@
+let candle_flyspeck_dir =
+  try Sys.getenv "FLYSPECK_DIR" with Not_found -> Sys.getcwd();;
+
+let candle_hollight_dir =
+  try Sys.getenv "HOLLIGHT_DIR" with Not_found -> failwith "HOLLIGHT_DIR";;
+
+let candle_pft_output =
+  try Sys.getenv "CANDLE_PFT_OUTPUT"
+  with Not_found -> failwith "CANDLE_PFT_OUTPUT";;
+
+needs (Filename.concat candle_hollight_dir "ProofTrace/pft.ml");;
+pft_stream_checkpoint_interval := 250000;;
+start_pft_stream candle_pft_output;;
+
+let new_axiom _ =
+  failwith "new_axiom has been disabled for Flyspeck leaf export";;
+
+needs (Filename.concat candle_flyspeck_dir
+         "candle/basics_length3_leaf.hl");;
+needs (Filename.concat candle_flyspeck_dir
+         "candle/vukhacky_real_leaf.hl");;
+
+save_pft_stream_target "flyspeck$Basics.LENGTH3"
+  Candle_leaf_basics.LENGTH3;;
+save_pft_stream_target "flyspeck$Vukhacky.REDUCE_WITH_DIV_Euler_lemma"
+  Candle_leaf_vukhacky.REDUCE_WITH_DIV_Euler_lemma;;
+
+let candle_refinement_export_stats = pft_stream_stats();;
+let candle_refinement_export_result = finish_pft_stream();;
+print_endline "FLYSPECK_REFINEMENT_LEAVES_EXPORT_OK";;

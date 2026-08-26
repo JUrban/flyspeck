@@ -1,0 +1,40 @@
+(* Checked route-selection extraction from general/vukhacky_tactics.hl. *)
+
+let candle_flyspeck_dir =
+  try Sys.getenv "FLYSPECK_DIR" with Not_found -> Sys.getcwd();;
+
+let candle_vukhacky_source =
+  Filename.concat candle_flyspeck_dir "general/vukhacky_tactics.hl";;
+
+let candle_vukhacky_digest =
+  Digest.to_hex (Digest.file candle_vukhacky_source);;
+
+if candle_vukhacky_digest <> "6b5b45ba6f26ed89e31f0c4e9456fb32"
+then failwith "Candle leaf: general/vukhacky_tactics.hl digest mismatch";;
+
+needs (Filename.concat candle_flyspeck_dir
+         "general/prove_by_refinement.hl");;
+
+let prove_by_refinement = Prove_by_refinement.prove_by_refinement;;
+
+module Candle_leaf_vukhacky = struct
+
+(* The statement and proof list are copied verbatim from the pinned source. *)
+let REDUCE_WITH_DIV_Euler_lemma = prove_by_refinement (
+ `!x y z . ~ (y = &0) /\ ~ (z = &0) ==> x * y / (z * y) = x / z`,
+ [(REPEAT STRIP_TAC);
+ (MATCH_MP_TAC REAL_EQ_LCANCEL_IMP);
+ (EXISTS_TAC `z:real`);
+ (ASM_REWRITE_TAC[]);
+ (REWRITE_TAC[REAL_ARITH `a * b * (c:real) = (a * c) * b`]);
+ (SUBGOAL_THEN `z * x / z = x` ASSUME_TAC);
+ (MATCH_MP_TAC REAL_DIV_LMUL);
+ (ASM_REWRITE_TAC[]);
+ (PURE_ONCE_ASM_REWRITE_TAC[]);
+ (MATCH_MP_TAC (MESON[REAL_MUL_LID] `a = &1 ==> a * b = b`));
+ (REWRITE_TAC[REAL_ARITH `a * b / c = (a * b) / c`]);
+ (MATCH_MP_TAC REAL_DIV_REFL);
+ (REWRITE_TAC[REAL_ENTIRE; MESON[] `~(a \/ b) <=> ~a /\ ~b`]);
+ (ASM_REWRITE_TAC[])]);;
+
+end;;
