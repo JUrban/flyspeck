@@ -37,10 +37,18 @@ let invf_in_dart = Sections.section_proof ["d"]
 `d IN dart_of_fan (V,E) ==>
 	inverse (f_fan_pair_ext (V,E)) d IN dart_of_fan (V,E)`
 [
-   (BETA_TAC THEN (move ["d_in"]));
-   (((fun arg_tac -> (fun arg_tac -> (fun arg_tac -> (use_arg_then2 ("f_fan_pair_ext_in_darts_k", [f_fan_pair_ext_in_darts_k])) (fun fst_arg -> (use_arg_then2 ("fanV", [])) (fun snd_arg -> combine_args_then arg_tac fst_arg snd_arg))) (fun fst_arg -> (use_arg_then2 ("d", [])) (fun snd_arg -> combine_args_then arg_tac fst_arg snd_arg))) (fun fst_arg -> (fun arg_tac -> arg_tac (Arg_term (`CARD (face (hypermap_of_fan (V,E)) d)`))) (fun snd_arg -> combine_args_then arg_tac fst_arg snd_arg))) (disch_tac [])) THEN BETA_TAC);
-   (((((use_arg_then2 ("darts_k", [darts_k]))(thm_tac (new_rewrite [] [])))) THEN (((fun arg_tac -> (use_arg_then2 ("COMPONENTS_HYPERMAP_OF_FAN", [COMPONENTS_HYPERMAP_OF_FAN])) (fun fst_arg -> (use_arg_then2 ("fanV", [])) (fun snd_arg -> combine_args_then arg_tac fst_arg snd_arg)))(thm_tac (new_rewrite [] []))))) THEN ((((use_arg_then2 ("IN_ELIM_THM", [IN_ELIM_THM]))(fun arg -> ONCE_REWRITE_TAC[get_arg_thm arg]))) THEN (simp_tac)));
-   ((BETA_TAC THEN ((fun arg_tac ->  (conv_thm_tac DISCH_THEN)  (fun fst_arg -> (use_arg_then2 ("d_in", [])) (fun snd_arg -> combine_args_then arg_tac fst_arg snd_arg))) (thm_tac MP_TAC)) THEN (simp_tac)) THEN (done_tac));
+   (BETA_TAC THEN
+    DISCH_THEN
+      (fun d_in ->
+         USE_THEN "fanV"
+           (fun fan_th ->
+              let perm =
+                MATCH_MP F_FAN_PAIR_EXT_PERMUTES_DART_OF_FAN fan_th in
+              let inverse_perm = MATCH_MP PERMUTES_INVERSE perm in
+              let membership =
+                SPEC `d:real^3#real^3`
+                  (MATCH_MP PERMUTES_IN_IMAGE inverse_perm) in
+              ACCEPT_TAC (EQ_MP (SYM membership) d_in))));
 ];;
 
 (* Finalization of the section MoreLemmas *)
