@@ -1,0 +1,53 @@
+(* ======================================================================== *)
+(* Flyspeck instantiation of the generic proof-producing partition theorem. *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE.  [Break_case_exec] must already be loaded.    *)
+(* This file introduces no new proof rule: it specializes the generic       *)
+(* composition theorem with Flyspeck's existing proved split lemmas.         *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_partition_composition.ml";;
+
+module Cv_compute_partition_ineqm = struct
+
+open Candle_cv_partition_composition;;
+open Break_case_exec;;
+
+let cv_partition_ineqm_obligations = prove
+ (`!x f.
+     (!i d. LENGTH x = LENGTH d ==>
+       LENGTH x = LENGTH (bisect_left i d) /\
+       LENGTH x = LENGTH (bisect_right i d)) /\
+     (!i n q d. LENGTH x = LENGTH d ==>
+       LENGTH x = LENGTH (frac_left i (DECIMAL n q) d) /\
+       LENGTH x = LENGTH (frac_right i (DECIMAL n q) d)) /\
+     (!i d. LENGTH x = LENGTH d ==>
+       ineqm x (bisect_left i d) f /\
+       ineqm x (bisect_right i d) f
+       ==> ineqm x d f) /\
+     (!i n q d. LENGTH x = LENGTH d ==>
+       ineqm x (frac_left i (DECIMAL n q) d) f /\
+       ineqm x (frac_right i (DECIMAL n q) d) f
+       ==> ineqm x d f)`,
+  REPEAT GEN_TAC THEN REPEAT CONJ_TAC THENL
+   [SIMP_TAC[LENGTH_bisect_left; LENGTH_bisect_right];
+    SIMP_TAC[LENGTH_frac_left; LENGTH_frac_right];
+    MESON_TAC[bisect_thm];
+    MESON_TAC[ineqm_frac_thm]]);;
+
+let cv_partition_ineqm_composition_sound =
+  let x = `x:real list` and f = `f:bool` in
+  let generic =
+    ISPECL
+      [`\d:(real#real)list. LENGTH (x:real list) = LENGTH d`;
+       `\d:(real#real)list. ineqm x d f`;
+       `\i d:(real#real)list. bisect_left i d`;
+       `\i d:(real#real)list. bisect_right i d`;
+       `\i n q d:(real#real)list. frac_left i (DECIMAL n q) d`;
+       `\i n q d:(real#real)list. frac_right i (DECIMAL n q) d`]
+      candle_partition_composition_sound_with_invariant in
+  let generic = CONV_RULE (DEPTH_CONV BETA_CONV) generic in
+  let obligations = SPECL [x;f] cv_partition_ineqm_obligations in
+  GENL [x;f] (MP generic obligations);;
+
+end;;

@@ -1,0 +1,81 @@
+needs "candle/cv_compute_partition_composition.ml";;
+
+let ineqm = new_definition
+ `ineqm (x:real list) (d:(real#real)list) (f:bool) <=> T`;;
+let bisect_left = new_definition
+ `bisect_left (i:num) (d:(real#real)list) = d`;;
+let bisect_right = new_definition
+ `bisect_right (i:num) (d:(real#real)list) = d`;;
+let frac_left = new_definition
+ `frac_left (i:num) (r:real) (d:(real#real)list) = d`;;
+let frac_right = new_definition
+ `frac_right (i:num) (r:real) (d:(real#real)list) = d`;;
+
+module Break_case_exec = struct
+
+let LENGTH_bisect_left = prove
+ (`!xs i. LENGTH (bisect_left i xs) = LENGTH xs`,
+  REWRITE_TAC[bisect_left]);;
+let LENGTH_bisect_right = prove
+ (`!xs i. LENGTH (bisect_right i xs) = LENGTH xs`,
+  REWRITE_TAC[bisect_right]);;
+let LENGTH_frac_left = prove
+ (`!xs i r. LENGTH (frac_left i r xs) = LENGTH xs`,
+  REWRITE_TAC[frac_left]);;
+let LENGTH_frac_right = prove
+ (`!xs i r. LENGTH (frac_right i r xs) = LENGTH xs`,
+  REWRITE_TAC[frac_right]);;
+let bisect_thm = prove
+ (`!d i x f. LENGTH x = LENGTH d ==>
+     ineqm x (bisect_left i d) f ==>
+     ineqm x (bisect_right i d) f ==>
+     ineqm x d f`,
+  REWRITE_TAC[ineqm]);;
+let ineqm_frac_thm = prove
+ (`!d i x f r. LENGTH x = LENGTH d ==>
+     ineqm x (frac_left i r d) f ==>
+     ineqm x (frac_right i r d) f ==>
+     ineqm x d f`,
+  REWRITE_TAC[ineqm]);;
+
+end;;
+
+needs "arith/cv_compute_partition_ineqm.hl";;
+
+open Candle_cv_partition_composition;;
+open Cv_compute_partition_ineqm;;
+
+let cv_partition_ineqm_test_holds = prove
+ (`candle_partition_holds
+     (\d. ineqm [#0] d T)
+     (\i d. bisect_left i d) (\i d. bisect_right i d)
+     (\i n q d. frac_left i (DECIMAL n q) d)
+     (\i n q d. frac_right i (DECIMAL n q) d)
+     [(#0,#1)]
+     (Candle_partition_bisect 0
+       Candle_partition_leaf
+       (Candle_partition_recurse_left 0 3 10 Candle_partition_leaf))`,
+  REWRITE_TAC[candle_partition_holds_def; ineqm; bisect_left;
+              bisect_right; frac_left; frac_right]);;
+
+let cv_partition_ineqm_test_sound =
+  MATCH_MP
+    (SPECL
+      [`[#0]`; `T`;
+       `Candle_partition_bisect 0
+          Candle_partition_leaf
+          (Candle_partition_recurse_left 0 3 10 Candle_partition_leaf)`;
+       `[(#0,#1)]`]
+      cv_partition_ineqm_composition_sound)
+    (CONJ
+      (prove (`LENGTH [#0] = LENGTH [(#0,#1)]`, REWRITE_TAC[LENGTH]))
+      cv_partition_ineqm_test_holds);;
+
+if hyp cv_partition_ineqm_test_sound <> [] ||
+   not
+     (aconv (concl cv_partition_ineqm_test_sound)
+       `ineqm [#0] [(#0,#1)] T`)
+then failwith "Flyspeck partition ineqm theorem interface mismatch";;
+
+print_endline "CANDLE_CV_PARTITION_INEQM_OK";;
+
