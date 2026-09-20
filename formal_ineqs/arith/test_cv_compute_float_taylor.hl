@@ -1,0 +1,75 @@
+needs "arith/cv_compute_float_taylor.hl";;
+
+open Cv_compute_float_taylor;;
+
+let cv_float_taylor_test_mk n e =
+  let n_tm = rand (Arith_num.mk_numeral_array (num n)) and
+      e_tm = rand (Arith_num.mk_small_numeral_array e) in
+  list_mk_comb (`float_num`,[`F`;n_tm;e_tm]);;
+
+let cv_float_taylor_test_interval n e =
+  let positive = cv_float_taylor_test_mk n e in
+  let _,n_tm,e_tm = Arith_float.dest_float positive in
+  mk_pair
+    (list_mk_comb (`float_num`,[`T`;n_tm;e_tm]),positive);;
+
+let cv_float_taylor_test_ws =
+  [cv_float_taylor_test_mk 2 47;
+   cv_float_taylor_test_mk 3 46;
+   cv_float_taylor_test_mk 5 45;
+   cv_float_taylor_test_mk 7 44;
+   cv_float_taylor_test_mk 11 43;
+   cv_float_taylor_test_mk 13 42];;
+
+let cv_float_taylor_test_dfs =
+  [cv_float_taylor_test_interval 101 46;
+   cv_float_taylor_test_interval 103 45;
+   cv_float_taylor_test_interval 107 44;
+   cv_float_taylor_test_interval 109 43;
+   cv_float_taylor_test_interval 113 42;
+   cv_float_taylor_test_interval 127 41];;
+
+let cv_float_taylor_test_dds =
+  [[cv_float_taylor_test_interval 131 45];
+   [cv_float_taylor_test_interval 137 44;
+    cv_float_taylor_test_interval 139 43];
+   [cv_float_taylor_test_interval 149 42;
+    cv_float_taylor_test_interval 151 41;
+    cv_float_taylor_test_interval 157 40];
+   [cv_float_taylor_test_interval 163 45;
+    cv_float_taylor_test_interval 167 44;
+    cv_float_taylor_test_interval 173 43;
+    cv_float_taylor_test_interval 179 42];
+   [cv_float_taylor_test_interval 181 41;
+    cv_float_taylor_test_interval 191 40;
+    cv_float_taylor_test_interval 193 45;
+    cv_float_taylor_test_interval 197 44;
+    cv_float_taylor_test_interval 199 43];
+   [cv_float_taylor_test_interval 211 42;
+    cv_float_taylor_test_interval 223 41;
+    cv_float_taylor_test_interval 227 40;
+    cv_float_taylor_test_interval 229 45;
+    cv_float_taylor_test_interval 233 44;
+    cv_float_taylor_test_interval 239 43]];;
+
+let cv_float_taylor_test_first =
+  cv_taylor_first_hi 8 cv_float_taylor_test_ws cv_float_taylor_test_dfs;;
+
+let cv_float_taylor_test_second =
+  cv_taylor_second_hi 8 cv_float_taylor_test_ws cv_float_taylor_test_dds;;
+
+if hyp cv_float_taylor_test_first <> [] ||
+   hyp cv_float_taylor_test_second <> [] then
+  failwith "reflected Taylor sums have assumptions";;
+
+if lhand (concl cv_float_taylor_test_first) <>
+     cv_taylor_first_lhs cv_float_taylor_test_ws cv_float_taylor_test_dfs ||
+   lhand (concl cv_float_taylor_test_second) <>
+     cv_taylor_second_lhs cv_float_taylor_test_ws cv_float_taylor_test_dds then
+  failwith "reflected Taylor sum theorem interface mismatch";;
+
+if length (cv_taylor_second_rows
+     cv_float_taylor_test_ws cv_float_taylor_test_dds) <> 6 then
+  failwith "reflected Taylor Hessian row mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_TAYLOR_OK";;

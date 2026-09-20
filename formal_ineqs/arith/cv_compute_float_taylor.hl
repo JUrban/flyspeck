@@ -1,0 +1,149 @@
+(* ======================================================================== *)
+(* Proof-producing reflected bounds for Flyspeck Taylor error sums.         *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. The interval absolute values and exact float  *)
+(* products retain ordinary HOL equalities. The complete first-derivative   *)
+(* or lower-triangular Hessian sum is rounded upward once by Kernel.compute. *)
+(* ======================================================================== *)
+
+needs "arith/cv_compute_float_polynomial.hl";;
+
+module Cv_compute_float_taylor = struct
+
+open Arith_float;;
+open Float_theory;;
+open Interval_arith;;
+open Cv_compute_float_polynomial;;
+
+let cv_taylor_two_float = Arith_float.mk_float 2 0;;
+
+let cv_taylor_float_neg tm =
+  let sign,n_tm,e_tm = Arith_float.dest_float tm in
+  let sign_tm = if sign = "T" then `T` else `F` in
+  REWRITE_RULE[] (SPECL [sign_tm;n_tm;e_tm] FLOAT_NEG);;
+
+let cv_taylor_float_iabs interval_tm =
+  let lo_tm,hi_tm = dest_pair interval_tm in
+  let neg_lo = cv_taylor_float_neg lo_tm in
+  let neg_lo_tm = rand (concl neg_lo) in
+  let max_neg_lo = Arith_float.float_max hi_tm neg_lo_tm in
+  let iabs_def = REWRITE_CONV[iabs] (mk_comb (`iabs`,interval_tm)) in
+  let max_congruence =
+    AP_TERM (mk_comb (`max:real->real->real`,hi_tm)) neg_lo in
+  TRANS iabs_def (TRANS max_congruence max_neg_lo);;
+
+let cv_taylor_mul left right =
+  mk_binop `(*):real->real->real` left right;;
+
+let cv_taylor_add left right =
+  mk_binop `(+):real->real->real` left right;;
+
+let rec cv_taylor_product factors =
+  match factors with
+  | [] -> failwith "cv_taylor_product: empty product"
+  | [factor] -> factor
+  | factor :: tail -> cv_taylor_mul factor (cv_taylor_product tail);;
+
+let cv_taylor_sum terms =
+  match terms with
+  | [] -> `&0`
+  | _ -> end_itlist cv_taylor_add terms;;
+
+let cv_taylor_first_lhs ws dfs =
+  if length ws <> length dfs || ws = [] then
+    failwith "cv_taylor_first_lhs: malformed lists"
+  else
+    cv_taylor_sum
+      (map2
+        (fun w df -> cv_taylor_mul w (mk_comb (`iabs`,df)))
+        ws dfs);;
+
+let cv_taylor_second_rows ws dds =
+  if ws = [] || length ws <> length dds then
+    failwith "cv_taylor_second_rows: malformed outer lists"
+  else
+    let rec rows i remaining_ws remaining_dds =
+      match remaining_ws,remaining_dds with
+      | [],[] -> []
+      | w :: ws_tail,row :: dds_tail ->
+          if length row <> i then
+            failwith "cv_taylor_second_rows: non-triangular Hessian";
+          let diagonal = last row and off_diagonal = butlast row in
+          let prefix,_ = chop_list (i - 1) ws in
+          let off_terms =
+            map2
+              (fun wj dd -> cv_taylor_mul wj (mk_comb (`iabs`,dd)))
+              prefix off_diagonal in
+          let diagonal_term =
+            cv_taylor_mul w (mk_comb (`iabs`,diagonal)) in
+          let inner =
+            if off_terms = [] then diagonal_term
+            else
+              cv_taylor_add diagonal_term
+                (cv_taylor_mul cv_taylor_two_float
+                  (cv_taylor_sum off_terms)) in
+          cv_taylor_mul w inner :: rows (i + 1) ws_tail dds_tail
+      | _ -> failwith "cv_taylor_second_rows: malformed outer lists" in
+    rows 1 ws dds;;
+
+let cv_taylor_second_lhs ws dds =
+  cv_taylor_sum (cv_taylor_second_rows ws dds);;
+
+let cv_taylor_transfer_bound iabs_eqs target_lhs reflected_bound =
+  let reflected_lhs,result = dest_binop `(<=):real->real->bool`
+    (concl reflected_bound) in
+  let rewritten = REWRITE_CONV iabs_eqs target_lhs in
+  let ring_eq =
+    prove
+      (mk_eq (rand (concl rewritten),reflected_lhs),
+       CONV_TAC REAL_RING) in
+  let target_eq = TRANS rewritten ring_eq in
+  let inequality_eq =
+    AP_THM (AP_TERM `(<=):real->real->bool` target_eq) result in
+  let result_th = EQ_MP (SYM inequality_eq) reflected_bound in
+  if hyp result_th <> [] || lhand (concl result_th) <> target_lhs then
+    failwith "cv_taylor_transfer_bound: theorem mismatch";
+  result_th;;
+
+let cv_taylor_first_hi p ws dfs =
+  if length ws <> length dfs || ws = [] then
+    failwith "cv_taylor_first_hi: malformed lists"
+  else
+    let iabs_eqs = map cv_taylor_float_iabs dfs in
+    let magnitudes = map (rand o concl) iabs_eqs in
+    let monomials = map2 (fun w magnitude -> [w;magnitude]) ws magnitudes in
+    let reflected = cv_float_product_sum_hi p monomials in
+    cv_taylor_transfer_bound iabs_eqs
+      (cv_taylor_first_lhs ws dfs) reflected;;
+
+let cv_taylor_second_hi p ws dds =
+  if ws = [] || length ws <> length dds then
+    failwith "cv_taylor_second_hi: malformed outer lists"
+  else
+    let rec build i remaining_ws remaining_dds =
+      match remaining_ws,remaining_dds with
+      | [],[] -> [],[]
+      | w :: ws_tail,row :: dds_tail ->
+          if length row <> i then
+            failwith "cv_taylor_second_hi: non-triangular Hessian";
+          let diagonal = last row and off_diagonal = butlast row in
+          let diagonal_eq = cv_taylor_float_iabs diagonal in
+          let off_eqs = map cv_taylor_float_iabs off_diagonal in
+          let prefix,_ = chop_list (i - 1) ws in
+          let diagonal_monomial = [w;w;rand (concl diagonal_eq)] in
+          let off_monomials =
+            map2
+              (fun wj eq ->
+                [cv_taylor_two_float;w;wj;rand (concl eq)])
+              prefix off_eqs in
+          let tail_eqs,tail_monomials =
+            build (i + 1) ws_tail dds_tail in
+          (diagonal_eq :: (off_eqs @ tail_eqs)),
+          (diagonal_monomial :: (off_monomials @ tail_monomials))
+      | _ -> failwith "cv_taylor_second_hi: malformed outer lists" in
+    let iabs_eqs,monomials = build 1 ws dds in
+    let reflected = cv_float_product_sum_hi p monomials in
+    cv_taylor_transfer_bound iabs_eqs
+      (cv_taylor_second_lhs ws dds) reflected;;
+
+end;;
