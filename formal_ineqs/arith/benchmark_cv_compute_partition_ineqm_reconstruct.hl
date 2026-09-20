@@ -1,0 +1,126 @@
+needs "arith/test_cv_compute_partition_ineqm.hl";;
+
+open Cv_compute_partition_ineqm_reconstruct;;
+open Break_case_exec;;
+
+let cv_partition_reconstruct_benchmark_process_cpu_ticks () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  int_of_string (List.nth fields 13) + int_of_string (List.nth fields 14);;
+
+let rec cv_partition_reconstruct_benchmark_tree depth =
+  if depth = 0 then Iarg_leaf 0
+  else
+    let child = cv_partition_reconstruct_benchmark_tree (depth - 1) in
+    Iarg_bisect (0,child,child);;
+
+let rec cv_partition_reconstruct_benchmark_leaf_terms x d f = function
+  | Iarg_leaf _ -> [mk_ineqm x d f]
+  | Iarg_bisect (index,left,right) ->
+      cv_partition_reconstruct_benchmark_leaf_terms x
+        (mk_bisect_left index d) f left @
+      cv_partition_reconstruct_benchmark_leaf_terms x
+        (mk_bisect_right index d) f right
+  | Iarg_facet ((index,false),fraction,_,child) ->
+      mk_ineqm x (mk_frac_left index fraction d) f ::
+      cv_partition_reconstruct_benchmark_leaf_terms x
+        (mk_frac_right index fraction d) f child
+  | Iarg_facet ((index,true),fraction,_,child) ->
+      let reflected_fraction = 1.0 -. fraction in
+      cv_partition_reconstruct_benchmark_leaf_terms x
+        (mk_frac_left index reflected_fraction d) f child @
+      [mk_ineqm x (mk_frac_right index reflected_fraction d) f];;
+
+let rec cv_partition_reconstruct_benchmark_baseline x d f = function
+  | Iarg_leaf _ -> ASSUME (mk_ineqm x d f)
+  | Iarg_bisect (index,left,right) ->
+      let left_theorem =
+        cv_partition_reconstruct_benchmark_baseline x
+          (mk_bisect_left index d) f left in
+      let right_theorem =
+        cv_partition_reconstruct_benchmark_baseline x
+          (mk_bisect_right index d) f right in
+      let split =
+        UNDISCH_ALL
+          (SPECL [d;mk_small_numeral index;x;f] bisect_thm) in
+      PROVE_HYP right_theorem (PROVE_HYP left_theorem split)
+  | Iarg_facet ((index,false),fraction,_,child) ->
+      let child_theorem =
+        cv_partition_reconstruct_benchmark_baseline x
+          (mk_frac_right index fraction d) f child in
+      let split =
+        UNDISCH_ALL
+          (SPECL
+            [d;mk_small_numeral index;x;f;mk_decimal10000 fraction]
+            ineqm_frac_thm) in
+      PROVE_HYP child_theorem split
+  | Iarg_facet ((index,true),fraction,_,child) ->
+      let reflected_fraction = 1.0 -. fraction in
+      let child_theorem =
+        cv_partition_reconstruct_benchmark_baseline x
+          (mk_frac_left index reflected_fraction d) f child in
+      let split =
+        UNDISCH_ALL
+          (SPECL
+            [d;mk_small_numeral index;x;f;
+             mk_decimal10000 reflected_fraction]
+            ineqm_frac_thm) in
+      PROVE_HYP child_theorem split;;
+
+let cv_partition_reconstruct_benchmark_leaf proposition =
+  EQT_ELIM (REWRITE_CONV[ineqm] proposition);;
+
+let cv_partition_reconstruct_benchmark_baseline_closed x d f tree =
+  let skeleton =
+    cv_partition_reconstruct_benchmark_baseline x d f tree in
+  let leaves =
+    map cv_partition_reconstruct_benchmark_leaf
+      (cv_partition_reconstruct_benchmark_leaf_terms x d f tree) in
+  REWRITE_RULE
+    [LENGTH;LENGTH_bisect_left;LENGTH_bisect_right;
+     LENGTH_frac_left;LENGTH_frac_right]
+    (DISCH_ALL (itlist PROVE_HYP leaves skeleton));;
+
+let cv_partition_reconstruct_benchmark_one depth =
+  let tree = cv_partition_reconstruct_benchmark_tree depth in
+  let leaves = 1 lsl depth in
+  let nodes = 2 * leaves - 1 in
+  let x = `[#0]` and d = `[(#0,#1)]` and f = `T` in
+  let baseline_start =
+    cv_partition_reconstruct_benchmark_process_cpu_ticks () in
+  let baseline =
+    cv_partition_reconstruct_benchmark_baseline_closed x d f tree in
+  let baseline_ticks =
+    cv_partition_reconstruct_benchmark_process_cpu_ticks () - baseline_start in
+  let reflected_start =
+    cv_partition_reconstruct_benchmark_process_cpu_ticks () in
+  let reflected =
+    cv_partition_ineqm_reconstruct
+      cv_partition_reconstruct_benchmark_leaf
+      (prove (`LENGTH [#0] = LENGTH [(#0,#1)]`,REWRITE_TAC[LENGTH]))
+      x d f tree in
+  let reflected_ticks =
+    cv_partition_reconstruct_benchmark_process_cpu_ticks () - reflected_start in
+  if hyp baseline <> [] || hyp reflected <> [] ||
+     not (aconv (concl baseline) (concl reflected))
+  then failwith "synthetic partition reconstruction theorem mismatch";
+  print_endline
+    ("CANDLE_CV_PARTITION_SYNTHETIC_DEPTH=" ^ string_of_int depth);
+  print_endline
+    ("CANDLE_CV_PARTITION_SYNTHETIC_LEAVES=" ^ string_of_int leaves);
+  print_endline
+    ("CANDLE_CV_PARTITION_SYNTHETIC_NODES=" ^ string_of_int nodes);
+  print_endline
+    ("CANDLE_CV_PARTITION_SYNTHETIC_BASELINE_TICKS=" ^
+     string_of_int baseline_ticks);
+  print_endline
+    ("CANDLE_CV_PARTITION_SYNTHETIC_REFLECTED_TICKS=" ^
+     string_of_int reflected_ticks);
+  baseline_ticks,reflected_ticks;;
+
+let cv_partition_reconstruct_benchmark_results =
+  map cv_partition_reconstruct_benchmark_one [5;7;9;10];;
+
+print_endline "CANDLE_CV_PARTITION_SYNTHETIC_OK";;
