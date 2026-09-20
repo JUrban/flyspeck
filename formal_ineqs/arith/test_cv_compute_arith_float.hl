@@ -1,0 +1,44 @@
+let cv_arith_float_n =
+  rand (Arith_num.mk_numeral_array
+    (Num.num_of_string
+      "123456789012345678901234567890123456789012345678901234567890")) and
+    cv_arith_float_e =
+      rand (Arith_num.mk_numeral_array (Num.num_of_int 37));;
+
+let cv_arith_float_tm =
+  mk_comb (mk_comb (`num_exp`,cv_arith_float_n),cv_arith_float_e);;
+
+let cv_arith_float_legacy_lo =
+  Arith_float.num_exp_lo_legacy 8 cv_arith_float_tm and
+    cv_arith_float_legacy_hi =
+      Arith_float.num_exp_hi_legacy 8 cv_arith_float_tm;;
+
+let _ = Arith_float.set_cv_compute_num_exp true;;
+
+let cv_arith_float_reflected_lo =
+  Arith_float.num_exp_lo 8 cv_arith_float_tm and
+    cv_arith_float_reflected_hi =
+      Arith_float.num_exp_hi 8 cv_arith_float_tm;;
+
+if concl cv_arith_float_legacy_lo <> concl cv_arith_float_reflected_lo ||
+   concl cv_arith_float_legacy_hi <> concl cv_arith_float_reflected_hi then
+  failwith "legacy/reflected num_exp theorem conclusions differ";;
+
+if hyp cv_arith_float_reflected_lo <> [] ||
+   hyp cv_arith_float_reflected_hi <> [] then
+  failwith "integrated reflected num_exp theorem has assumptions";;
+
+let cv_arith_float_f1 = Arith_float.mk_float 123456789 10 and
+    cv_arith_float_f2 = Arith_float.mk_float 987654321 11;;
+
+let cv_arith_float_mul_lo =
+  Arith_float.float_mul_lo 2 cv_arith_float_f1 cv_arith_float_f2 and
+    cv_arith_float_mul_hi =
+      Arith_float.float_mul_hi 2 cv_arith_float_f1 cv_arith_float_f2;;
+
+if hyp cv_arith_float_mul_lo <> [] || hyp cv_arith_float_mul_hi <> [] then
+  failwith "integrated reflected float multiplication has assumptions";;
+
+let _ = Arith_float.set_cv_compute_num_exp false;;
+
+print_endline "CANDLE_CV_ARITH_FLOAT_OK";;

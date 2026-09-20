@@ -7,6 +7,7 @@
 (* Dependencies *)
 needs "arith/arith_nat.hl";;
 needs "arith/num_exp_theory.hl";;
+needs "arith/cv_compute_num_exp.hl";;
 needs "arith/float_theory.hl";;
 needs "arith/interval_arith.hl";;
 needs "misc/misc_vars.hl";;
@@ -32,6 +33,9 @@ module type Arith_float_sig =
     val hi_num_conv : int -> term -> thm
     val num_exp_lo : int -> term -> thm
     val num_exp_hi : int -> term -> thm
+    val num_exp_lo_legacy : int -> term -> thm
+    val num_exp_hi_legacy : int -> term -> thm
+    val set_cv_compute_num_exp : bool -> unit
 
     val float_lt0 : term -> thm
     val float_gt0 : term -> thm
@@ -261,7 +265,7 @@ let make_lo_thm i =
             ARITH_TAC);;
 
 let lo_thm_array = Array.init Arith_num.arith_base make_lo_thm;;
-let lo_thm_table = Hashtbl.create Arith_num.arith_base;;
+let lo_thm_table : (term, thm) Hashtbl.t = Hashtbl.create Arith_num.arith_base;;
 
 for i = 0 to Arith_num.arith_base - 1 do
   Hashtbl.add lo_thm_table Arith_num.const_array.(i) lo_thm_array.(i);
@@ -277,7 +281,7 @@ let make_lo_thm2 i =
                           ARITH_TAC);;
 
 let lo_thm2_array = Array.init Arith_num.arith_base make_lo_thm2;;
-let lo_thm2_table = Hashtbl.create Arith_num.arith_base;;
+let lo_thm2_table : (term, thm) Hashtbl.t = Hashtbl.create Arith_num.arith_base;;
 
 for i = 0 to Arith_num.arith_base - 1 do
   Hashtbl.add lo_thm2_table Arith_num.const_array.(i) lo_thm2_array.(i);
@@ -294,7 +298,7 @@ let make_hi_thm i =
                              ARITH_TAC);;
 
 let hi_thm_array = Array.init Arith_num.arith_base make_hi_thm;;
-let hi_thm_table = Hashtbl.create Arith_num.arith_base;;
+let hi_thm_table : (term, thm) Hashtbl.t = Hashtbl.create Arith_num.arith_base;;
 
 for i = 0 to Arith_num.arith_base - 1 do
   Hashtbl.add hi_thm_table Arith_num.const_array.(i) hi_thm_array.(i);
@@ -471,6 +475,29 @@ let num_exp_hi_lt p tm =
         EQ_MP (AP_TERM (rator (concl th0)) th4) th0
     else
       th0;;
+
+(* Keep the original conversions as the default.  Development probes can
+   select the verified computation primitive without changing the theorem
+   interfaces used by the arithmetic and interval layers below. *)
+let num_exp_lo_legacy = num_exp_lo and
+    num_exp_hi_legacy = num_exp_hi;;
+
+let cv_compute_num_exp_enabled = ref false;;
+
+let set_cv_compute_num_exp enabled =
+  cv_compute_num_exp_enabled := enabled;;
+
+let num_exp_lo p tm =
+  if !cv_compute_num_exp_enabled then
+    Cv_compute_num_exp.cv_num_exp_lo p tm
+  else
+    num_exp_lo_legacy p tm;;
+
+let num_exp_hi p tm =
+  if !cv_compute_num_exp_enabled then
+    Cv_compute_num_exp.cv_num_exp_hi p tm
+  else
+    num_exp_hi_legacy p tm;;
 
 (***************************************)
 (* num_exp_lt, num_exp_le *)
@@ -2453,13 +2480,13 @@ let my_add h key v =
     ();
   Hashtbl.add h key v;;
   
-let mul_table = Hashtbl.create cache_size and
-    div_table = Hashtbl.create cache_size and
-    add_table = Hashtbl.create cache_size and
-    sub_table = Hashtbl.create cache_size and
-    sqrt_table = Hashtbl.create cache_size and
-    le_table = Hashtbl.create cache_size and
-    max_table = Hashtbl.create cache_size;;
+let mul_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size and
+    div_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size and
+    add_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size and
+    sub_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size and
+    sqrt_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size and
+    le_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size and
+    max_table : (string, thm) Hashtbl.t = Hashtbl.create cache_size;;
 
 let reset_cache () =
   Hashtbl.clear mul_table;
@@ -2493,16 +2520,16 @@ let reset_stat () =
 
 let print_stat () =
   let len = Hashtbl.length in
-  let cmp_str1 = sprintf "lt0 = %d\ngt0 = %d\nlt = %d\n" !lt0_c !gt0_c !lt_c and
-      cmp_str2 = sprintf "le0 = %d\nge0 = %d\n" !le0_c !ge0_c and
-      cmp_str3 = sprintf "min = %d\nmin_max = %d\n" !min_c !min_max_c and
-      le_str = sprintf "le = %d (le_hash = %d)\n" !le_c (len le_table) and
-      max_str = sprintf "max = %d (max_hash = %d)\n" !max_c (len max_table) and
-      mul_str = sprintf "mul_lo = %d, mul_hi = %d (mul_hash = %d)\n" !mul_lo_c !mul_hi_c (len mul_table) and
-      div_str = sprintf "div_lo = %d, div_hi = %d (div_hash = %d)\n" !div_lo_c !div_hi_c (len div_table) and
-      add_str = sprintf "add_lo = %d, add_hi = %d (add_hash = %d)\n" !add_lo_c !add_hi_c (len add_table) and
-      sub_str = sprintf "sub_lo = %d, sub_hi = %d (sub_hash = %d)\n" !sub_lo_c !sub_hi_c (len sub_table) and
-      sqrt_str = sprintf "sqrt_lo = %d, sqrt_hi = %d (sqrt_hash = %d)\n" !sqrt_lo_c !sqrt_hi_c (len sqrt_table) in
+  let cmp_str1 = "lt0 = " ^ string_of_int !lt0_c ^ "\ngt0 = " ^ string_of_int !gt0_c ^ "\nlt = " ^ string_of_int !lt_c ^ "\n" and
+      cmp_str2 = "le0 = " ^ string_of_int !le0_c ^ "\nge0 = " ^ string_of_int !ge0_c ^ "\n" and
+      cmp_str3 = "min = " ^ string_of_int !min_c ^ "\nmin_max = " ^ string_of_int !min_max_c ^ "\n" and
+      le_str = "le = " ^ string_of_int !le_c ^ " (le_hash = " ^ string_of_int (len le_table) ^ ")\n" and
+      max_str = "max = " ^ string_of_int !max_c ^ " (max_hash = " ^ string_of_int (len max_table) ^ ")\n" and
+      mul_str = "mul_lo = " ^ string_of_int !mul_lo_c ^ ", mul_hi = " ^ string_of_int !mul_hi_c ^ " (mul_hash = " ^ string_of_int (len mul_table) ^ ")\n" and
+      div_str = "div_lo = " ^ string_of_int !div_lo_c ^ ", div_hi = " ^ string_of_int !div_hi_c ^ " (div_hash = " ^ string_of_int (len div_table) ^ ")\n" and
+      add_str = "add_lo = " ^ string_of_int !add_lo_c ^ ", add_hi = " ^ string_of_int !add_hi_c ^ " (add_hash = " ^ string_of_int (len add_table) ^ ")\n" and
+      sub_str = "sub_lo = " ^ string_of_int !sub_lo_c ^ ", sub_hi = " ^ string_of_int !sub_hi_c ^ " (sub_hash = " ^ string_of_int (len sub_table) ^ ")\n" and
+      sqrt_str = "sqrt_lo = " ^ string_of_int !sqrt_lo_c ^ ", sqrt_hi = " ^ string_of_int !sqrt_hi_c ^ " (sqrt_hash = " ^ string_of_int (len sqrt_table) ^ ")\n" in
     print_string (cmp_str1 ^ cmp_str2 ^ cmp_str3 ^ 
 		    le_str ^ max_str ^ mul_str ^ div_str ^ add_str ^ sub_str ^ sqrt_str);;
 
@@ -2831,7 +2858,7 @@ let dest_float_raw f_tm =
 let compare_floats_raw =
   let denorm n e = n */ (Num.num_of_int Arith_num.arith_base **/ e) in
   let cmp n1 e1 n2 e2 =
-    if e1 <= e2 then 
+    if le_num e1 e2 then
       compare_num n1 (denorm n2 (e2 -/ e1))
     else
       compare_num (denorm n1 (e1 -/ e2)) n2 in
