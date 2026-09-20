@@ -1,0 +1,77 @@
+needs "arith/test_cv_compute_float_taylor.hl";;
+needs "arith/cv_compute_float_taylor_checker.hl";;
+
+let cv_taylor_checker_process_cpu_ticks () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  int_of_string (List.nth fields 13) + int_of_string (List.nth fields 14);;
+
+let cv_taylor_checker_cell =
+  (cv_float_taylor_test_ws,
+   cv_float_taylor_test_dfs,
+   cv_float_taylor_test_dds);;
+
+let cv_taylor_checker_first_reflection =
+  Cv_compute_float_taylor_batch.cv_taylor_first_reflection
+    cv_float_taylor_test_ws cv_float_taylor_test_dfs and
+    cv_taylor_checker_second_reflection =
+      Cv_compute_float_taylor_batch.cv_taylor_second_reflection
+        cv_float_taylor_test_ws cv_float_taylor_test_dds;;
+
+let cv_taylor_checker_first_bound =
+  let _,_,monomials = cv_taylor_checker_first_reflection in
+  let _,_,_,_,bound =
+    Cv_compute_float_checker.cv_prepare_float_polynomial monomials in
+  bound and
+    cv_taylor_checker_second_bound =
+      let _,_,monomials = cv_taylor_checker_second_reflection in
+      let _,_,_,_,bound =
+        Cv_compute_float_checker.cv_prepare_float_polynomial monomials in
+      bound;;
+
+let cv_taylor_checker_cell_bounds =
+  [cv_taylor_checker_first_bound;cv_taylor_checker_second_bound];;
+
+let cv_taylor_checker_operation count () =
+  Cv_compute_float_taylor_checker.cv_taylor_polynomial_threshold_check
+    (List.flatten (replicate cv_taylor_checker_cell_bounds count))
+    (replicate cv_taylor_checker_cell count);;
+
+let cv_taylor_checker_profile_ticks operation =
+  let _ = Arith_float.reset_cache () in
+  let start_ticks = cv_taylor_checker_process_cpu_ticks () in
+  let result = operation () in
+  let elapsed = cv_taylor_checker_process_cpu_ticks () - start_ticks in
+  if hyp result <> [] then
+    failwith "single-verdict Taylor checker theorem has assumptions";
+  elapsed;;
+
+let cv_taylor_checker_warmup = cv_taylor_checker_operation 1 ();;
+
+let cv_taylor_checker_profile_cells = 32;;
+
+let cv_taylor_checker_profile_result =
+  cv_taylor_checker_profile_ticks
+    (cv_taylor_checker_operation cv_taylor_checker_profile_cells);;
+
+let cv_taylor_checker_large_cells = 128;;
+
+let cv_taylor_checker_large_result =
+  cv_taylor_checker_profile_ticks
+    (cv_taylor_checker_operation cv_taylor_checker_large_cells);;
+
+print_endline
+  ("CANDLE_CV_TAYLOR_CHECKER_TICKS=" ^
+   string_of_int cv_taylor_checker_profile_result);;
+print_endline
+  ("CANDLE_CV_TAYLOR_CHECKER_CELLS=" ^
+   string_of_int cv_taylor_checker_profile_cells);;
+print_endline
+  ("CANDLE_CV_TAYLOR_CHECKER_LARGE_TICKS=" ^
+   string_of_int cv_taylor_checker_large_result);;
+print_endline
+  ("CANDLE_CV_TAYLOR_CHECKER_LARGE_CELLS=" ^
+   string_of_int cv_taylor_checker_large_cells);;
+print_endline "CANDLE_CV_TAYLOR_CHECKER_BENCHMARK_OK";;

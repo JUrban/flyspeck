@@ -1,0 +1,28 @@
+(* ======================================================================== *)
+(* Single-verdict reflected checks for Flyspeck Taylor error polynomials.   *)
+(* ======================================================================== *)
+
+needs "arith/cv_compute_float_checker.hl";;
+needs "arith/cv_compute_float_taylor_batch.hl";;
+
+module Cv_compute_float_taylor_checker = struct
+
+open Cv_compute_float_checker;;
+open Cv_compute_float_taylor_batch;;
+
+let cv_taylor_polynomial_threshold_check aligned_bounds cells =
+  if cells = [] then
+    failwith "cv_taylor_polynomial_threshold_check: empty batch"
+  else
+    let prepared =
+      List.flatten
+        (map
+          (fun (ws,dfs,dds) ->
+            [cv_taylor_first_reflection ws dfs;
+             cv_taylor_second_reflection ws dds])
+          cells) in
+    cv_float_product_sums_check_hi
+      aligned_bounds
+      (map (fun (_,_,monomials) -> monomials) prepared);;
+
+end;;

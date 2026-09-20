@@ -1,0 +1,150 @@
+(* ======================================================================== *)
+(* Single-verdict reflected checks for positive Flyspeck float polynomials. *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. Polynomial factors are translated directly   *)
+(* to the authenticated native-float model. Kernel.compute returns one      *)
+(* Boolean verdict; the exported theorem retains all exact source           *)
+(* polynomials, exponent alignments, and integer thresholds.                *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_native_float_checker.ml";;
+needs "arith/cv_compute_float_sum.hl";;
+
+module Cv_compute_float_checker = struct
+
+open Candle_cv_native_float_core;;
+open Candle_cv_native_float_polynomial;;
+open Candle_cv_native_float_batch;;
+open Candle_cv_native_float_checker;;
+open Cv_compute_num_exp;;
+open Cv_compute_float_sum;;
+
+let cv_prepare_float_polynomial monomials =
+  if monomials = [] || exists (fun factors -> factors = []) monomials then
+    failwith "cv_prepare_float_polynomial: empty polynomial"
+  else
+    let raw_pairs = map (map cv_dest_positive_float) monomials in
+    let conversions =
+      map
+        (map
+          (fun (n_hash,e_hash) ->
+            cv_hash_to_numeral n_hash,cv_hash_to_numeral e_hash))
+        raw_pairs in
+    let numeral_pairs =
+      map
+        (map
+          (fun (n_th,e_th) -> rand (concl n_th),rand (concl e_th)))
+        conversions in
+    let exponents =
+      map
+        (fun factors ->
+          itlist (+/) (map (dest_numeral o snd) factors) (num 0))
+        numeral_pairs in
+    let target =
+      end_itlist
+        (fun left right -> if compare_num left right < 0 then left else right)
+        exponents in
+    let target_tm = mk_numeral target in
+    let terms_tm =
+      mk_list
+        (map
+          (fun factors -> mk_list (map mk_pair factors,`:num#num`))
+          numeral_pairs,
+         `:(num#num)list`) in
+    let items_tm =
+      mk_list
+        (map2
+          (fun factors exponent ->
+            let delta = exponent -/ target in
+            mk_pair
+              (mk_list (map fst factors,`:num`),
+               mk_list
+                 (replicate `0` (Num.int_of_num delta),`:num`)))
+          numeral_pairs exponents,
+         `:num list#num list`) in
+    let base = num Arith_num.arith_base in
+    let aligned_values =
+      map2
+        (fun factors exponent ->
+          itlist ( */) (map (dest_numeral o fst) factors) (num 1) */
+          power_num base (exponent -/ target))
+        numeral_pairs exponents in
+    let aligned_value = itlist (+/) aligned_values (num 0) in
+    conversions,target_tm,terms_tm,items_tm,mk_numeral aligned_value;;
+
+let cv_checker_one_true = prove
+ (`!p. 1 = (if p then SUC 0 else 0) ==> p`,
+  BOOL_CASES_TAC `p:bool` THEN REWRITE_TAC[] THEN ARITH_TAC);;
+
+let cv_float_product_sums_check_hi aligned_bounds polynomial_batches =
+  if polynomial_batches = [] then
+    failwith "cv_float_product_sums_check_hi: empty batch"
+  else if length aligned_bounds <> length polynomial_batches then
+    failwith "cv_float_product_sums_check_hi: threshold length mismatch"
+  else
+    let prepared = map cv_prepare_float_polynomial polynomial_batches in
+    let bounds_tm = mk_list (aligned_bounds,`:num`) in
+    let sources_tm =
+      mk_list
+        (map
+          (fun (_,target_tm,terms_tm,_,_) -> mk_pair (target_tm,terms_tm))
+          prepared,
+         `:num#((num#num)list)list`) in
+    let jobs_tm =
+      mk_list
+        (map
+          (fun (_,target_tm,_,items_tm,_) -> mk_pair (target_tm,items_tm))
+          prepared,
+         `:num#(num list#num list)list`) in
+    let alignment_tm =
+      list_mk_comb
+        (`candle_nf_fueled_batch_alignment`,[sources_tm;jobs_tm]) in
+    let alignment_rewrite =
+      REWRITE_CONV
+        [candle_nf_fueled_batch_alignment_def;
+         candle_nf_fueled_alignment_def; candle_nf_product_def;
+         candle_nf_monomial_mantissa_def;
+         candle_nf_monomial_exponent_def; FST; SND; LENGTH]
+        alignment_tm in
+    let alignment =
+      EQT_ELIM
+        (TRANS alignment_rewrite
+          (NUM_REDUCE_CONV (rand (concl alignment_rewrite)))) in
+    let bounds_rep =
+      REWRITE_CONV[candle_nf_num_list_def]
+        (mk_comb (`candle_nf_num_list`,bounds_tm)) in
+    let jobs_rep =
+      REWRITE_CONV
+        [candle_nf_fueled_jobs_def; candle_nf_fueled_job_def;
+         candle_nf_fueled_items_def; candle_nf_fueled_item_def;
+         candle_nf_num_list_def; candle_nf_fuel_def; FST; SND]
+        (mk_comb (`candle_nf_fueled_jobs`,jobs_tm)) in
+    let base_tm = mk_small_numeral Arith_num.arith_base in
+    let expression =
+      list_mk_comb
+        (`candle_cv_nf_fueled_batch_check_hi`,
+         [mk_comb (`Cexp_num`,base_tm);
+          rand (concl bounds_rep);rand (concl jobs_rep)]) in
+    let computation =
+      compute candle_cv_nf_fueled_batch_checker_compute_eqs expression in
+    if not (aconv (rand (concl computation)) `Cexp_num 1`) then
+      failwith "cv_float_product_sums_check_hi: rejected thresholds";
+    let correct =
+      SPECL [bounds_tm;jobs_tm;base_tm]
+        candle_cv_nf_fueled_batch_check_hi_correct in
+    let correct = PURE_REWRITE_RULE[bounds_rep;jobs_rep] correct in
+    let encoded_true =
+      REWRITE_RULE[injectivity "cval"]
+        (TRANS (SYM computation) correct) in
+    let predicate,_ = dest_cond (rand (concl encoded_true)) in
+    let checked =
+      MATCH_MP (SPEC predicate cv_checker_one_true) encoded_true in
+    let sound =
+      SPECL [sources_tm;jobs_tm;bounds_tm;base_tm]
+        candle_nf_fueled_batch_check_hi_sound in
+    let result = MP sound (CONJ alignment checked) in
+    if hyp result <> [] then
+      failwith "cv_float_product_sums_check_hi: theorem has assumptions";
+    result;;
+
+end;;
