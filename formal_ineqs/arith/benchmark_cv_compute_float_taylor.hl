@@ -1,0 +1,179 @@
+needs "arith/test_cv_compute_float_taylor.hl";;
+
+let cv_taylor_process_cpu_ticks () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  int_of_string (List.nth fields 13) + int_of_string (List.nth fields 14);;
+
+let rec cv_taylor_fine_sum_hi pp terms =
+  match terms with
+  | [] -> failwith "cv_taylor_fine_sum_hi: empty sum"
+  | [term] -> term
+  | term :: tail ->
+      rand (concl
+        (Arith_float.float_add_hi pp term
+          (cv_taylor_fine_sum_hi pp tail)));;
+
+let cv_taylor_fine_first_hi pp ws dfs =
+  let magnitudes =
+    map (rand o concl o cv_taylor_float_iabs) dfs in
+  cv_taylor_fine_sum_hi pp
+    (map2
+      (fun w magnitude ->
+        rand (concl (Arith_float.float_mul_hi pp w magnitude)))
+      ws magnitudes);;
+
+let cv_taylor_fine_second_hi pp ws dds =
+  let rec rows i remaining_ws remaining_dds =
+    match remaining_ws,remaining_dds with
+    | [],[] -> []
+    | w :: ws_tail,row :: dds_tail ->
+        let diagonal = rand (concl (cv_taylor_float_iabs (last row))) in
+        let off_diagonal =
+          map (rand o concl o cv_taylor_float_iabs) (butlast row) in
+        let prefix,_ = chop_list (i - 1) ws in
+        let diagonal_product =
+          rand (concl (Arith_float.float_mul_hi pp w diagonal)) in
+        let inner =
+          if off_diagonal = [] then diagonal_product
+          else
+            let off_products =
+              map2
+                (fun wj magnitude ->
+                  rand (concl
+                    (Arith_float.float_mul_hi pp wj magnitude)))
+                prefix off_diagonal in
+            let off_sum = cv_taylor_fine_sum_hi pp off_products in
+            let twice =
+              rand (concl
+                (Arith_float.float_mul_hi pp cv_taylor_two_float off_sum)) in
+            rand (concl
+              (Arith_float.float_add_hi pp diagonal_product twice)) in
+        let row_bound =
+          rand (concl (Arith_float.float_mul_hi pp w inner)) in
+        row_bound :: rows (i + 1) ws_tail dds_tail
+    | _ -> failwith "cv_taylor_fine_second_hi: malformed lists" in
+  cv_taylor_fine_sum_hi pp (rows 1 ws dds);;
+
+let rec cv_taylor_benchmark_repeat count operation =
+  if count <= 0 then ()
+  else
+    let _ = Arith_float.reset_cache () in
+    let _ = operation () in
+    cv_taylor_benchmark_repeat (count - 1) operation;;
+
+let cv_taylor_benchmark_ticks count operation =
+  let start_ticks = cv_taylor_process_cpu_ticks () in
+  let _ = cv_taylor_benchmark_repeat count operation in
+  cv_taylor_process_cpu_ticks () - start_ticks;;
+
+let cv_taylor_fine_operation () =
+  let first =
+    cv_taylor_fine_first_hi 8
+      cv_float_taylor_test_ws cv_float_taylor_test_dfs in
+  let second =
+    cv_taylor_fine_second_hi 8
+      cv_float_taylor_test_ws cv_float_taylor_test_dds in
+  first,second;;
+
+let cv_taylor_reflected_operation () =
+  let first =
+    cv_taylor_first_hi 8
+      cv_float_taylor_test_ws cv_float_taylor_test_dfs in
+  let second =
+    cv_taylor_second_hi 8
+      cv_float_taylor_test_ws cv_float_taylor_test_dds in
+  first,second;;
+
+let cv_taylor_benchmark_first_monomials =
+  let magnitudes =
+    map (rand o concl o cv_taylor_float_iabs)
+      cv_float_taylor_test_dfs in
+  map2 (fun w magnitude -> [w;magnitude])
+    cv_float_taylor_test_ws magnitudes;;
+
+let cv_taylor_benchmark_second_monomials =
+  let rec build i remaining_ws remaining_dds =
+    match remaining_ws,remaining_dds with
+    | [],[] -> []
+    | w :: ws_tail,row :: dds_tail ->
+        let diagonal = rand (concl (cv_taylor_float_iabs (last row))) in
+        let off_diagonal =
+          map (rand o concl o cv_taylor_float_iabs) (butlast row) in
+        let prefix,_ = chop_list (i - 1) cv_float_taylor_test_ws in
+        [w;w;diagonal] ::
+          (map2
+            (fun wj magnitude ->
+              [cv_taylor_two_float;w;wj;magnitude])
+            prefix off_diagonal @
+           build (i + 1) ws_tail dds_tail)
+    | _ -> failwith "cv_taylor_benchmark_second_monomials" in
+  build 1 cv_float_taylor_test_ws cv_float_taylor_test_dds;;
+
+let cv_taylor_exact_products_operation () =
+  map Cv_compute_float_polynomial.cv_exact_positive_float_product
+    (cv_taylor_benchmark_first_monomials @
+     cv_taylor_benchmark_second_monomials);;
+
+let cv_taylor_benchmark_first_product_results =
+  map (rand o concl o
+       Cv_compute_float_polynomial.cv_exact_positive_float_product)
+    cv_taylor_benchmark_first_monomials;;
+
+let cv_taylor_benchmark_second_product_results =
+  map (rand o concl o
+       Cv_compute_float_polynomial.cv_exact_positive_float_product)
+    cv_taylor_benchmark_second_monomials;;
+
+let cv_taylor_reflected_sums_operation () =
+  let first =
+    Cv_compute_float_sum.cv_float_sum_hi 8
+      cv_taylor_benchmark_first_product_results in
+  let second =
+    Cv_compute_float_sum.cv_float_sum_hi 8
+      cv_taylor_benchmark_second_product_results in
+  first,second;;
+
+(* Warm both theorem-producing paths before sampling.  Flyspeck's arithmetic
+   numeral tables are intentionally persistent, so the warm measurement is
+   the relevant steady-state comparison inside a long verifier run. *)
+let cv_taylor_benchmark_warmup =
+  let _ = cv_taylor_fine_operation () in
+  let _ = cv_taylor_reflected_operation () in
+  ();;
+
+let cv_taylor_benchmark_repetitions = 50;;
+
+let cv_taylor_fine_ticks =
+  cv_taylor_benchmark_ticks cv_taylor_benchmark_repetitions
+    cv_taylor_fine_operation;;
+
+let cv_taylor_reflected_ticks =
+  cv_taylor_benchmark_ticks cv_taylor_benchmark_repetitions
+    cv_taylor_reflected_operation;;
+
+let cv_taylor_exact_product_ticks =
+  cv_taylor_benchmark_ticks cv_taylor_benchmark_repetitions
+    cv_taylor_exact_products_operation;;
+
+let cv_taylor_reflected_sum_ticks =
+  cv_taylor_benchmark_ticks cv_taylor_benchmark_repetitions
+    cv_taylor_reflected_sums_operation;;
+
+print_endline
+  ("CANDLE_CV_TAYLOR_FINE_TICKS=" ^ string_of_int cv_taylor_fine_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_REFLECTED_TICKS=" ^
+   string_of_int cv_taylor_reflected_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_EXACT_PRODUCT_TICKS=" ^
+   string_of_int cv_taylor_exact_product_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_REFLECTED_SUM_TICKS=" ^
+   string_of_int cv_taylor_reflected_sum_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_REPETITIONS=" ^
+   string_of_int cv_taylor_benchmark_repetitions);;
+print_endline "CANDLE_CV_TAYLOR_BENCHMARK_OK";;
