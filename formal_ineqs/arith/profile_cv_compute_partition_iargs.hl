@@ -35,6 +35,40 @@ let cv_partition_profile_leaves,cv_partition_profile_facets,
     cv_partition_profile_bisects,cv_partition_profile_nodes,
     cv_partition_profile_max_depth = cv_partition_profile_shape;;
 
+let cv_partition_profile_tree_shapes =
+  map
+    (fun (identifier,tree) ->
+       let leaves,facets,_,nodes,depth = cv_partition_iargs_shape tree in
+       identifier,leaves + facets,nodes,depth)
+    !Break_case_log.break_data;;
+
+let cv_partition_profile_by_cases =
+  sort
+    (fun (_,left,_,_) (_,right,_,_) -> left < right)
+    cv_partition_profile_tree_shapes;;
+
+let cv_partition_profile_min_id,cv_partition_profile_min_cases,
+    cv_partition_profile_min_nodes,cv_partition_profile_min_tree_depth =
+  List.hd cv_partition_profile_by_cases;;
+let cv_partition_profile_median_id,cv_partition_profile_median_cases,
+    cv_partition_profile_median_nodes,cv_partition_profile_median_depth =
+  List.nth cv_partition_profile_by_cases 231;;
+let cv_partition_profile_max_id,cv_partition_profile_max_cases,
+    cv_partition_profile_max_nodes,cv_partition_profile_max_tree_depth =
+  List.nth cv_partition_profile_by_cases 462;;
+
+let cv_partition_profile_count_at_least threshold =
+  List.length
+    (filter
+      (fun (_,cases,_,_) -> threshold <= cases)
+      cv_partition_profile_tree_shapes);;
+
+let cv_partition_profile_cases_at_least threshold =
+  itlist
+    (fun (_,cases,_,_) total ->
+       if threshold <= cases then total + cases else total)
+    cv_partition_profile_tree_shapes 0;;
+
 if List.length !Break_case_log.break_data <> 463 ||
    cv_partition_profile_tree_count <> 463 ||
    cv_partition_profile_leaves <> 7479 ||
@@ -58,4 +92,46 @@ print_endline
 print_endline
   ("CANDLE_CV_PARTITION_IARGS_NODES=" ^
    string_of_int cv_partition_profile_nodes);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MIN_CASES=" ^
+   string_of_int cv_partition_profile_min_cases);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MEDIAN_CASES=" ^
+   string_of_int cv_partition_profile_median_cases);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MAX_CASES=" ^
+   string_of_int cv_partition_profile_max_cases);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MAX_CASE_NODES=" ^
+   string_of_int cv_partition_profile_max_nodes);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_GE_64_CASES=" ^
+   string_of_int (cv_partition_profile_count_at_least 64));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_GE_128_CASES=" ^
+   string_of_int (cv_partition_profile_count_at_least 128));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_GE_256_CASES=" ^
+   string_of_int (cv_partition_profile_count_at_least 256));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_GE_512_CASES=" ^
+   string_of_int (cv_partition_profile_count_at_least 512));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_GE_1024_CASES=" ^
+   string_of_int (cv_partition_profile_count_at_least 1024));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_CASES_GE_64=" ^
+   string_of_int (cv_partition_profile_cases_at_least 64));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_CASES_GE_128=" ^
+   string_of_int (cv_partition_profile_cases_at_least 128));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_CASES_GE_256=" ^
+   string_of_int (cv_partition_profile_cases_at_least 256));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MIN_ID=" ^ cv_partition_profile_min_id);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MEDIAN_ID=" ^ cv_partition_profile_median_id);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_MAX_ID=" ^ cv_partition_profile_max_id);;
 print_endline "CANDLE_CV_PARTITION_IARGS_OK";;

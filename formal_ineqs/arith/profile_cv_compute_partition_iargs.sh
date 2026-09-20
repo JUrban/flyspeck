@@ -41,5 +41,5 @@ if rg -q 'ERROR:|EXCEPTION:|Parsing failed' "$log_file"; then
   exit 1
 fi
 
-rg -o 'CANDLE_CV_PARTITION_IARGS_[A-Z_]+=[0-9]+' "$log_file"
+rg -o 'CANDLE_CV_PARTITION_IARGS_[A-Z0-9_]+=[0-9]+' "$log_file"
 printf '%s\n' 'CANDLE_CV_PARTITION_IARGS_OK'
