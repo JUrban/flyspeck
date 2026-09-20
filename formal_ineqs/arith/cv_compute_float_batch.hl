@@ -1,0 +1,223 @@
+(* ======================================================================== *)
+(* Proof-producing batches of nonnegative Flyspeck float sums.              *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. Every input sum keeps its own authenticated   *)
+(* exponent-alignment contract, while all sums execute behind one           *)
+(* Kernel.compute call.                                                      *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_native_float_batch.ml";;
+needs "arith/cv_compute_float_polynomial.hl";;
+
+module Cv_compute_float_batch = struct
+
+open Candle_cv_native_float_core;;
+open Candle_cv_native_float_polynomial;;
+open Candle_cv_native_float_batch;;
+open Cv_compute_num_exp;;
+open Cv_compute_float_sum;;
+open Num_exp_theory;;
+open Float_theory;;
+
+let cv_prepare_float_sum_batch floats =
+  if floats = [] then failwith "cv_prepare_float_sum_batch: empty sum" else
+  let raw_pairs = map cv_dest_positive_float floats in
+  let conversions =
+    map
+      (fun (n_hash,e_hash) ->
+        cv_hash_to_numeral n_hash,cv_hash_to_numeral e_hash)
+      raw_pairs in
+  let numeral_pairs =
+    map (fun (n_th,e_th) -> rand (concl n_th),rand (concl e_th))
+      conversions in
+  let exponents = map (dest_numeral o snd) numeral_pairs in
+  let target =
+    end_itlist
+      (fun left right -> if compare_num left right < 0 then left else right)
+      exponents in
+  let target_tm = mk_numeral target in
+  let pairs_tm = mk_list (map mk_pair numeral_pairs,`:num#num`) in
+  let terms_tm = mk_comb (`candle_nf_singleton_terms`,pairs_tm) in
+  let items =
+    map2
+      (fun (n_tm,_) exponent ->
+        let delta = exponent -/ target in
+        mk_pair
+          (mk_list ([n_tm],`:num`),
+           mk_list (replicate `0` (Num.int_of_num delta),`:num`)))
+      numeral_pairs exponents in
+  let items_tm = mk_list (items,`:num list#num list`) in
+  let max_digits =
+    end_itlist Int.max
+      (map (String.length o string_of_num o dest_numeral o fst)
+        numeral_pairs) in
+  let max_delta =
+    end_itlist Int.max
+      (map (fun exponent -> Num.int_of_num (exponent -/ target)) exponents) in
+  (raw_pairs,conversions,target_tm,pairs_tm,terms_tm,items_tm,
+   max_digits,max_delta);;
+
+let rec cv_dest_cval_pair_list tm =
+  let op,args = strip_comb tm in
+  if is_const op && fst (dest_const op) = "Cexp_num" then
+    match args with
+    | [_] -> []
+    | _ -> failwith "cv_dest_cval_pair_list: malformed terminator"
+  else if is_const op && fst (dest_const op) = "Cexp_pair" then
+    match args with
+    | [head;tail] ->
+        cv_dest_cval_pair head :: cv_dest_cval_pair_list tail
+    | _ -> failwith "cv_dest_cval_pair_list: malformed pair"
+  else
+    failwith "cv_dest_cval_pair_list: expected cval list";;
+
+let rec cv_float_batch_map3 f xs ys zs =
+  match xs,ys,zs with
+  | [],[],[] -> []
+  | x :: xt,y :: yt,z :: zt ->
+      f x y z :: cv_float_batch_map3 f xt yt zt
+  | _ -> failwith "cv_float_batch_map3: length mismatch";;
+
+let cv_float_sum_hi_batch (p:int) float_batches : thm list =
+  if p <= 0 then failwith "cv_float_sum_hi_batch: nonpositive precision" else
+  if float_batches = [] then failwith "cv_float_sum_hi_batch: empty batch" else
+  let prepared = map cv_prepare_float_sum_batch float_batches in
+  let sources_tm =
+    mk_list
+      (map
+        (fun (_,_,target_tm,_,terms_tm,_,_,_) ->
+          mk_pair (target_tm,terms_tm))
+        prepared,
+       `:num#((num#num)list)list`) in
+  let jobs_tm =
+    mk_list
+      (map
+        (fun (_,_,target_tm,_,_,items_tm,_,_) ->
+          mk_pair (target_tm,items_tm))
+        prepared,
+       `:num#(num list#num list)list`) in
+  let alignment_tm =
+    list_mk_comb
+      (`candle_nf_fueled_batch_alignment`,[sources_tm;jobs_tm]) in
+  let alignment_rewrite =
+    REWRITE_CONV
+      [candle_nf_fueled_batch_alignment_def;
+       candle_nf_singleton_terms_def; candle_nf_fueled_alignment_def;
+       candle_nf_product_def; candle_nf_monomial_mantissa_def;
+       candle_nf_monomial_exponent_def; FST; SND; LENGTH]
+      alignment_tm in
+  let alignment =
+    EQT_ELIM
+      (TRANS alignment_rewrite
+        (NUM_REDUCE_CONV (rand (concl alignment_rewrite)))) in
+  let jobs_rep =
+    REWRITE_CONV
+      [candle_nf_fueled_jobs_def; candle_nf_fueled_job_def;
+       candle_nf_fueled_items_def; candle_nf_fueled_item_def;
+       candle_nf_num_list_def; candle_nf_fuel_def; FST; SND]
+      (mk_comb (`candle_nf_fueled_jobs`,jobs_tm)) in
+  let base = Arith_num.arith_base in
+  let base_tm = mk_small_numeral base in
+  let limit_tm = mk_numeral (power_num (num base) (num p)) in
+  let fuel_size =
+    end_itlist Int.max
+      (map (fun (_,_,_,_,_,_,digits,delta) -> digits + delta + 16)
+        prepared) in
+  let fuel_tm = mk_list (replicate `0` fuel_size,`:num`) in
+  let fuel_rep =
+    REWRITE_CONV[candle_nf_fuel_def]
+      (mk_comb (`candle_nf_fuel`,fuel_tm)) in
+  let expression =
+    list_mk_comb
+      (`candle_cv_nf_fueled_batch_round_hi`,
+       [mk_comb (`Cexp_num`,base_tm);
+        mk_comb (`Cexp_num`,limit_tm);
+        rand (concl fuel_rep);
+        rand (concl jobs_rep)]) in
+  let computation =
+    compute candle_cv_nf_fueled_batch_compute_eqs expression in
+  let result_cvals = cv_dest_cval_pair_list (rand (concl computation)) in
+  let numeral_results =
+    map
+      (fun (n_cval,e_cval) ->
+        cv_dest_cval_num n_cval,cv_dest_cval_num e_cval)
+      result_cvals in
+  if length numeral_results <> length prepared then
+    failwith "cv_float_sum_hi_batch: result length mismatch";
+  let correct =
+    SPECL [jobs_tm;fuel_tm;base_tm;limit_tm]
+      candle_cv_nf_fueled_batch_round_hi_correct in
+  let correct = PURE_REWRITE_RULE[fuel_rep;jobs_rep] correct in
+  let represented_result = TRANS (SYM correct) computation in
+  let round_result =
+    REWRITE_RULE
+      [candle_nf_pairs_roundtrip; candle_nf_decode_pairs_def;
+       candle_nf_decode_pair_def; candle_nf_decode_num_def]
+      (AP_TERM `candle_nf_decode_pairs` represented_result) in
+  let sound =
+    SPECL [sources_tm;jobs_tm;fuel_tm;base_tm;limit_tm]
+      candle_nf_fueled_batch_round_hi_sound in
+  let sound =
+    MP sound
+      (CONJ
+        (EQT_ELIM (NUM_REDUCE_CONV (mk_neg (mk_eq (base_tm,`0`)))))
+        alignment) in
+  let num_bounds =
+    CONJUNCTS
+      (REWRITE_RULE[round_result;candle_nf_batch_upper_def;FST;SND]
+        sound) in
+  if length num_bounds <> length prepared then
+    failwith "cv_float_sum_hi_batch: soundness length mismatch";
+  cv_float_batch_map3
+    (fun (raw_pairs,conversions,_,pairs_tm,_,_,_,_)
+         (n_result,e_result) num_bound ->
+      let value_bridge =
+        REWRITE_RULE[arith_base_def]
+          (SPEC pairs_tm candle_nf_singleton_terms_value) in
+      let num_sound =
+        PURE_REWRITE_RULE[value_bridge; GSYM num_exp] num_bound in
+      let float_sound =
+        MP (SPECL [pairs_tm;n_result;e_result]
+              candle_nf_pair_float_sum_bound)
+          num_sound in
+      let float_sound =
+        REWRITE_RULE[candle_nf_pair_float_sum_def;FST;SND]
+          float_sound in
+      let first_n_hash,first_e_hash = hd raw_pairs in
+      let n_result_hash =
+        cv_numeral_to_hash (cv_is_wrapped_numeral first_n_hash) n_result and
+          e_result_hash =
+            cv_numeral_to_hash (cv_is_wrapped_numeral first_e_hash) e_result in
+      let input_rewrites =
+        List.flatten
+          (map (fun (n_th,e_th) -> [GSYM n_th;GSYM e_th]) conversions) in
+      PURE_REWRITE_RULE
+        (n_result_hash :: e_result_hash :: input_rewrites)
+        float_sound)
+    prepared numeral_results num_bounds;;
+
+let cv_float_product_sums_hi p polynomial_batches =
+  if polynomial_batches = [] then
+    failwith "cv_float_product_sums_hi: empty batch"
+  else if exists (fun monomials -> monomials = []) polynomial_batches then
+    failwith "cv_float_product_sums_hi: empty polynomial"
+  else
+    let product_eq_batches =
+      map
+        (map Cv_compute_float_polynomial.cv_exact_positive_float_product)
+        polynomial_batches in
+    let product_result_batches =
+      map (map (rand o concl)) product_eq_batches in
+    let reflected_bounds =
+      cv_float_sum_hi_batch p product_result_batches in
+    map2
+      (fun product_eqs reflected_bound ->
+        let product_sum_eq =
+          Cv_compute_float_polynomial.cv_product_sum_eq product_eqs in
+        let result = rand (concl reflected_bound) in
+        let inequality_eq =
+          AP_THM (AP_TERM `(<=):real->real->bool` product_sum_eq) result in
+        EQ_MP (SYM inequality_eq) reflected_bound)
+      product_eq_batches reflected_bounds;;
+
+end;;

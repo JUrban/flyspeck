@@ -1,0 +1,47 @@
+needs "arith/cv_compute_float_batch.hl";;
+needs "arith/test_cv_compute_float_taylor.hl";;
+
+open Cv_compute_float_batch;;
+
+let cv_float_batch_test_first_products =
+  let magnitudes =
+    map (rand o concl o Cv_compute_float_taylor.cv_taylor_float_iabs)
+      cv_float_taylor_test_dfs in
+  map2 (fun w magnitude -> [w;magnitude])
+    cv_float_taylor_test_ws magnitudes;;
+
+let cv_float_batch_test_second_products =
+  let rec build i remaining_ws remaining_dds =
+    match remaining_ws,remaining_dds with
+    | [],[] -> []
+    | w :: ws_tail,row :: dds_tail ->
+        let diagonal =
+          rand (concl
+            (Cv_compute_float_taylor.cv_taylor_float_iabs (last row))) in
+        let off_diagonal =
+          map
+            (rand o concl o
+             Cv_compute_float_taylor.cv_taylor_float_iabs)
+            (butlast row) in
+        let prefix,_ = chop_list (i - 1) cv_float_taylor_test_ws in
+        [w;w;diagonal] ::
+          (map2
+            (fun wj magnitude ->
+              [Cv_compute_float_taylor.cv_taylor_two_float;
+               w;wj;magnitude])
+            prefix off_diagonal @
+           build (i + 1) ws_tail dds_tail)
+    | _ -> failwith "cv_float_batch_test_second_products" in
+  build 1 cv_float_taylor_test_ws cv_float_taylor_test_dds;;
+
+let cv_float_batch_test_bounds =
+  cv_float_product_sums_hi 8
+    [cv_float_batch_test_first_products;
+     cv_float_batch_test_second_products;
+     cv_float_batch_test_first_products];;
+
+if length cv_float_batch_test_bounds <> 3 ||
+   exists (fun th -> hyp th <> []) cv_float_batch_test_bounds then
+  failwith "reflected Flyspeck float batch theorem mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_BATCH_OK";;

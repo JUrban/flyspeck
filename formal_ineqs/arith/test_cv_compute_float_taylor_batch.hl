@@ -1,0 +1,34 @@
+needs "arith/cv_compute_float_taylor_batch.hl";;
+needs "arith/test_cv_compute_float_taylor.hl";;
+
+open Cv_compute_float_taylor_batch;;
+
+let cv_float_taylor_batch_test_cells =
+  replicate
+    (cv_float_taylor_test_ws,
+     cv_float_taylor_test_dfs,
+     cv_float_taylor_test_dds)
+    8;;
+
+let cv_float_taylor_batch_test_bounds =
+  cv_taylor_bounds_hi_batch 8 cv_float_taylor_batch_test_cells;;
+
+if length cv_float_taylor_batch_test_bounds <> 8 then
+  failwith "reflected Taylor batch has wrong length";;
+
+let cv_float_taylor_batch_test_first_lhs =
+  Cv_compute_float_taylor.cv_taylor_first_lhs
+    cv_float_taylor_test_ws cv_float_taylor_test_dfs and
+    cv_float_taylor_batch_test_second_lhs =
+      Cv_compute_float_taylor.cv_taylor_second_lhs
+        cv_float_taylor_test_ws cv_float_taylor_test_dds;;
+
+if exists
+     (fun (first,second) ->
+       hyp first <> [] || hyp second <> [] ||
+       lhand (concl first) <> cv_float_taylor_batch_test_first_lhs ||
+       lhand (concl second) <> cv_float_taylor_batch_test_second_lhs)
+     cv_float_taylor_batch_test_bounds then
+  failwith "reflected Taylor batch theorem interface mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_TAYLOR_BATCH_OK";;

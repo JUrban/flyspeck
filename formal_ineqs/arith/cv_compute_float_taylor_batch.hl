@@ -1,0 +1,80 @@
+(* ======================================================================== *)
+(* Batched proof-producing Flyspeck Taylor error bounds.                    *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. A batch keeps each cell's original first-    *)
+(* and second-derivative theorem interface, but reflects all of their       *)
+(* polynomial sums in one authenticated computation.                        *)
+(* ======================================================================== *)
+
+needs "arith/cv_compute_float_batch.hl";;
+needs "arith/cv_compute_float_taylor.hl";;
+
+module Cv_compute_float_taylor_batch = struct
+
+open Cv_compute_float_batch;;
+open Cv_compute_float_taylor;;
+
+let cv_taylor_first_reflection ws dfs =
+  if length ws <> length dfs || ws = [] then
+    failwith "cv_taylor_first_reflection: malformed lists"
+  else
+    let iabs_eqs = map cv_taylor_float_iabs dfs in
+    let magnitudes = map (rand o concl) iabs_eqs in
+    let monomials = map2 (fun w magnitude -> [w;magnitude]) ws magnitudes in
+    iabs_eqs,cv_taylor_first_lhs ws dfs,monomials;;
+
+let cv_taylor_second_reflection ws dds =
+  if ws = [] || length ws <> length dds then
+    failwith "cv_taylor_second_reflection: malformed outer lists"
+  else
+    let rec build i remaining_ws remaining_dds =
+      match remaining_ws,remaining_dds with
+      | [],[] -> [],[]
+      | w :: ws_tail,row :: dds_tail ->
+          if length row <> i then
+            failwith "cv_taylor_second_reflection: non-triangular Hessian";
+          let diagonal = last row and off_diagonal = butlast row in
+          let diagonal_eq = cv_taylor_float_iabs diagonal in
+          let off_eqs = map cv_taylor_float_iabs off_diagonal in
+          let prefix,_ = chop_list (i - 1) ws in
+          let diagonal_monomial = [w;w;rand (concl diagonal_eq)] in
+          let off_monomials =
+            map2
+              (fun wj eq ->
+                [cv_taylor_two_float;w;wj;rand (concl eq)])
+              prefix off_eqs in
+          let tail_eqs,tail_monomials =
+            build (i + 1) ws_tail dds_tail in
+          (diagonal_eq :: (off_eqs @ tail_eqs)),
+          (diagonal_monomial :: (off_monomials @ tail_monomials))
+      | _ -> failwith "cv_taylor_second_reflection: malformed outer lists" in
+    let iabs_eqs,monomials = build 1 ws dds in
+    iabs_eqs,cv_taylor_second_lhs ws dds,monomials;;
+
+let rec cv_taylor_group_pairs bounds =
+  match bounds with
+  | [] -> []
+  | first :: second :: tail ->
+      (first,second) :: cv_taylor_group_pairs tail
+  | _ -> failwith "cv_taylor_group_pairs: odd result length";;
+
+let cv_taylor_bounds_hi_batch p cells =
+  if cells = [] then failwith "cv_taylor_bounds_hi_batch: empty batch" else
+  let prepared =
+    List.flatten
+      (map
+        (fun (ws,dfs,dds) ->
+          [cv_taylor_first_reflection ws dfs;
+           cv_taylor_second_reflection ws dds])
+        cells) in
+  let reflected =
+    cv_float_product_sums_hi p
+      (map (fun (_,_,monomials) -> monomials) prepared) in
+  let transferred =
+    map2
+      (fun (iabs_eqs,target_lhs,_) reflected_bound ->
+        cv_taylor_transfer_bound iabs_eqs target_lhs reflected_bound)
+      prepared reflected in
+  cv_taylor_group_pairs transferred;;
+
+end;;
