@@ -1,0 +1,70 @@
+needs "arith/benchmark_cv_compute_float_taylor.hl";;
+needs "arith/cv_compute_float_taylor_batch.hl";;
+
+let cv_taylor_batch_cell =
+  (cv_float_taylor_test_ws,
+   cv_float_taylor_test_dfs,
+   cv_float_taylor_test_dds);;
+
+let rec cv_taylor_collect count operation =
+  if count <= 0 then []
+  else operation () :: cv_taylor_collect (count - 1) operation;;
+
+let cv_taylor_batch_profile_ticks operation =
+  let _ = Arith_float.reset_cache () in
+  let start_ticks = cv_taylor_process_cpu_ticks () in
+  let _ = operation () in
+  cv_taylor_process_cpu_ticks () - start_ticks;;
+
+let cv_taylor_batch_fine count () =
+  cv_taylor_collect count cv_taylor_fine_operation;;
+
+let cv_taylor_batch_scalar count () =
+  cv_taylor_collect count cv_taylor_reflected_operation;;
+
+let cv_taylor_batch_reflected count () =
+  Cv_compute_float_taylor_batch.cv_taylor_bounds_hi_batch 8
+    (replicate cv_taylor_batch_cell count);;
+
+(* Warm the new batch machinery independently from the earlier scalar warmup. *)
+let cv_taylor_batch_warmup = cv_taylor_batch_reflected 1 ();;
+
+let cv_taylor_batch_profile_cells = 32;;
+
+let cv_taylor_batch_fine_ticks =
+  cv_taylor_batch_profile_ticks
+    (cv_taylor_batch_fine cv_taylor_batch_profile_cells);;
+
+let cv_taylor_batch_scalar_ticks =
+  cv_taylor_batch_profile_ticks
+    (cv_taylor_batch_scalar cv_taylor_batch_profile_cells);;
+
+let cv_taylor_batch_reflected_ticks =
+  cv_taylor_batch_profile_ticks
+    (cv_taylor_batch_reflected cv_taylor_batch_profile_cells);;
+
+let cv_taylor_batch_large_cells = 128;;
+
+let cv_taylor_batch_large_ticks =
+  cv_taylor_batch_profile_ticks
+    (cv_taylor_batch_reflected cv_taylor_batch_large_cells);;
+
+print_endline
+  ("CANDLE_CV_TAYLOR_BATCH_FINE_TICKS=" ^
+   string_of_int cv_taylor_batch_fine_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_BATCH_SCALAR_TICKS=" ^
+   string_of_int cv_taylor_batch_scalar_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_BATCH_REFLECTED_TICKS=" ^
+   string_of_int cv_taylor_batch_reflected_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_BATCH_CELLS=" ^
+   string_of_int cv_taylor_batch_profile_cells);;
+print_endline
+  ("CANDLE_CV_TAYLOR_BATCH_LARGE_TICKS=" ^
+   string_of_int cv_taylor_batch_large_ticks);;
+print_endline
+  ("CANDLE_CV_TAYLOR_BATCH_LARGE_CELLS=" ^
+   string_of_int cv_taylor_batch_large_cells);;
+print_endline "CANDLE_CV_TAYLOR_BATCH_BENCHMARK_OK";;
