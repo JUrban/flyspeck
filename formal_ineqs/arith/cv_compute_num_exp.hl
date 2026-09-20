@@ -1,0 +1,113 @@
+(* ======================================================================== *)
+(* Proof-producing reflected rounding for Flyspeck num_exp values.          *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. This keeps the public theorem shapes used by  *)
+(* Arith_float while moving repeated DIV/MOD rounding into Candle compute.  *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_native_float_core.ml";;
+needs "arith/num_exp_theory.hl";;
+
+module Cv_compute_num_exp = struct
+
+open Candle_cv_native_float_core;;
+
+let cv_dest_num_exp tm =
+  let ltm,e_tm = dest_comb tm in
+  let op,n_tm = dest_comb ltm in
+  if not (is_const op) || fst (dest_const op) <> "num_exp" then
+    failwith "cv_dest_num_exp"
+  else
+    n_tm,e_tm;;
+
+let cv_dest_cval_pair tm =
+  let ltm,r_tm = dest_comb tm in
+  let op,l_tm = dest_comb ltm in
+  if not (is_const op) || fst (dest_const op) <> "Cexp_pair" then
+    failwith "cv_dest_cval_pair"
+  else
+    l_tm,r_tm;;
+
+let cv_dest_cval_num tm =
+  let op,n_tm = dest_comb tm in
+  if not (is_const op) || fst (dest_const op) <> "Cexp_num" then
+    failwith "cv_dest_cval_num"
+  else
+    n_tm;;
+
+let cv_round_fuel n =
+  let count = String.length (string_of_num n) + 2 in
+  mk_list (replicate `0` count,`:num`);;
+
+let cv_num_exp_round direction p tm =
+  if p <= 0 then failwith "cv_num_exp_round: nonpositive precision" else
+  let n_hash,e_hash = cv_dest_num_exp tm in
+  let n_to_numeral = Arith_num.NUM_TO_NUMERAL_CONV n_hash and
+      e_to_numeral = Arith_num.NUM_TO_NUMERAL_CONV e_hash in
+  let n_tm = rand (concl n_to_numeral) and
+      e_tm = rand (concl e_to_numeral) in
+  let n = dest_numeral n_tm in
+  let base = Arith_num.arith_base in
+  let base_tm = mk_small_numeral base in
+  let limit_tm = mk_numeral
+    (power_num (num base) (num p)) in
+  let fuel_tm = cv_round_fuel n in
+  let fuel_rep =
+    REWRITE_CONV[candle_nf_fuel_def]
+      (mk_comb (`candle_nf_fuel`,fuel_tm)) in
+  let fuel_cval = rand (concl fuel_rep) in
+  let round_const,compute_eqs,correct_thm,sound_thm =
+    if direction then
+      (`candle_cv_nf_round_hi`,
+       candle_cv_nf_round_compute_eqs,
+       candle_cv_nf_round_hi_correct,
+       candle_nf_round_hi_sound)
+    else
+      (`candle_cv_nf_round_lo`,
+       candle_cv_nf_round_compute_eqs,
+       candle_cv_nf_round_lo_correct,
+       candle_nf_round_lo_sound) in
+  let expression =
+    list_mk_comb
+      (round_const,
+       [mk_comb (`Cexp_num`,base_tm);
+        mk_comb (`Cexp_num`,limit_tm);
+        fuel_cval;
+        mk_comb (`Cexp_num`,n_tm);
+        mk_comb (`Cexp_num`,e_tm)]) in
+  let computation = compute compute_eqs expression in
+  let n_cval,e_cval = cv_dest_cval_pair (rand (concl computation)) in
+  let n_result = cv_dest_cval_num n_cval and
+      e_result = cv_dest_cval_num e_cval in
+  let correct =
+    SPECL [fuel_tm; base_tm; limit_tm; n_tm; e_tm] correct_thm in
+  let correct = PURE_REWRITE_RULE[fuel_rep] correct in
+  let represented_result = TRANS (SYM correct) computation in
+  let decoded_result =
+    AP_TERM `candle_nf_decode_pair` represented_result in
+  let round_result =
+    REWRITE_RULE
+      [candle_nf_pair_roundtrip;
+       candle_nf_decode_pair_def;
+       candle_nf_decode_num_def]
+      decoded_result in
+  let sound =
+    SPECL [fuel_tm; base_tm; limit_tm; n_tm; e_tm] sound_thm in
+  let sound =
+    if direction then MP sound (EQT_ELIM (NUM_REDUCE_CONV
+      (mk_neg (mk_eq (base_tm,`0`))))) else sound in
+  let sound =
+    REWRITE_RULE[round_result; FST; SND] sound in
+  let num_exp_sound =
+    PURE_REWRITE_RULE[GSYM Num_exp_theory.num_exp] sound in
+  let n_result_hash = Arith_num.NUMERAL_TO_NUM_CONV n_result and
+      e_result_hash = Arith_num.NUMERAL_TO_NUM_CONV e_result in
+  PURE_REWRITE_RULE
+    [n_result_hash; e_result_hash;
+     GSYM n_to_numeral; GSYM e_to_numeral]
+    num_exp_sound;;
+
+let cv_num_exp_lo = cv_num_exp_round false;;
+let cv_num_exp_hi = cv_num_exp_round true;;
+
+end;;

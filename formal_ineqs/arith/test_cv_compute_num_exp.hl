@@ -1,0 +1,24 @@
+needs "arith/cv_compute_num_exp.hl";;
+
+let cv_num_exp_test_n =
+  Arith_num.mk_numeral_array
+    (Num.num_of_string "123456789012345678901234567890") and
+    cv_num_exp_test_e =
+      Arith_num.mk_numeral_array (Num.num_of_int 37);;
+
+let cv_num_exp_test_tm =
+  mk_comb (mk_comb (`num_exp`,cv_num_exp_test_n),cv_num_exp_test_e);;
+
+let cv_num_exp_test_lo =
+  Cv_compute_num_exp.cv_num_exp_lo 4 cv_num_exp_test_tm and
+    cv_num_exp_test_hi =
+      Cv_compute_num_exp.cv_num_exp_hi 4 cv_num_exp_test_tm;;
+
+if hyp cv_num_exp_test_lo <> [] || hyp cv_num_exp_test_hi <> [] then
+  failwith "reflected num_exp bound has assumptions";;
+
+if rand (concl cv_num_exp_test_lo) <> cv_num_exp_test_tm ||
+   lhand (concl cv_num_exp_test_hi) <> cv_num_exp_test_tm then
+  failwith "reflected num_exp theorem interface mismatch";;
+
+print_endline "CANDLE_CV_NUM_EXP_OK";;
