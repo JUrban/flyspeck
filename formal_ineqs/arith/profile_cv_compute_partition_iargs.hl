@@ -1,0 +1,61 @@
+needs "arith/cv_compute_partition_iargs.hl";;
+
+open Cv_compute_partition_iargs;;
+
+let cv_partition_profile_process_cpu_ticks () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  int_of_string (List.nth fields 13) + int_of_string (List.nth fields 14);;
+
+let cv_partition_profile_start = cv_partition_profile_process_cpu_ticks ();;
+
+let cv_partition_profile_tree_count =
+  itlist
+    (fun (_,tree) count ->
+       let encoded = cv_partition_iargs_term tree in
+       if cv_partition_iargs_shape tree <> cv_partition_term_shape encoded then
+         failwith "Iarg/encoded partition shape mismatch";
+       count + 1)
+    !Break_case_log.break_data 0;;
+
+let cv_partition_profile_ticks =
+  cv_partition_profile_process_cpu_ticks () - cv_partition_profile_start;;
+
+let cv_partition_profile_shape =
+  itlist
+    (fun (_,tree) (leaves,facets,bisects,nodes,max_depth) ->
+       let l,f,b,n,d = cv_partition_iargs_shape tree in
+       leaves + l,facets + f,bisects + b,nodes + n,max max_depth d)
+    !Break_case_log.break_data
+    (0,0,0,0,0);;
+
+let cv_partition_profile_leaves,cv_partition_profile_facets,
+    cv_partition_profile_bisects,cv_partition_profile_nodes,
+    cv_partition_profile_max_depth = cv_partition_profile_shape;;
+
+if List.length !Break_case_log.break_data <> 463 ||
+   cv_partition_profile_tree_count <> 463 ||
+   cv_partition_profile_leaves <> 7479 ||
+   cv_partition_profile_facets <> 15462 ||
+   cv_partition_profile_bisects <> 7016 ||
+   cv_partition_profile_nodes <> 29957 ||
+   cv_partition_profile_leaves + cv_partition_profile_facets <> 22941 ||
+   cv_partition_profile_max_depth <> 40
+then failwith "authenticated Flyspeck partition inventory mismatch";;
+
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_TICKS=" ^
+   string_of_int cv_partition_profile_ticks);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_TREES=" ^
+   string_of_int cv_partition_profile_tree_count);;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_CASES=" ^
+   string_of_int
+     (cv_partition_profile_leaves + cv_partition_profile_facets));;
+print_endline
+  ("CANDLE_CV_PARTITION_IARGS_NODES=" ^
+   string_of_int cv_partition_profile_nodes);;
+print_endline "CANDLE_CV_PARTITION_IARGS_OK";;

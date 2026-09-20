@@ -6,7 +6,7 @@
 
 module Break_case_log = struct
 
- let break_data = ref ([]);;
+ let break_data : (string * int iargs) list ref = ref ([]);;
 
  let add_case(s,t) = 
    let _ = break_data := (s,t)::!break_data in

@@ -1,0 +1,91 @@
+(* ======================================================================== *)
+(* Exact bridge from Flyspeck's host-language Iarg partition tree to the    *)
+(* proof-producing Candle partition datatype.                              *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE.  This conversion is not a proof rule.  Its   *)
+(* output acquires authority only through                                  *)
+(* [candle_partition_composition_sound] and authenticated leaf theorems.    *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_partition_composition.ml";;
+
+module Cv_compute_partition_iargs = struct
+
+open Candle_cv_partition_composition;;
+
+let cv_partition_leaf_tm = `Candle_partition_leaf`;;
+let cv_partition_bisect_tm = `Candle_partition_bisect`;;
+let cv_partition_recurse_left_tm = `Candle_partition_recurse_left`;;
+let cv_partition_recurse_right_tm = `Candle_partition_recurse_right`;;
+
+let cv_partition_fraction_denominator = 10000;;
+
+let cv_partition_fraction_numerator fraction =
+  let numerator =
+    int_of_float
+      (float_of_int cv_partition_fraction_denominator *. fraction) in
+  if numerator < 0 || numerator > cv_partition_fraction_denominator then
+    failwith "cv partition fraction is outside [0,1]";
+  numerator;;
+
+let cv_partition_num value =
+  if value < 0 then failwith "cv partition negative numeral"
+  else mk_small_numeral value;;
+
+let rec cv_partition_iargs_term = function
+  | Iarg_leaf _ -> cv_partition_leaf_tm
+  | Iarg_bisect (index,left,right) ->
+      list_mk_comb
+        (cv_partition_bisect_tm,
+         [cv_partition_num index;
+          cv_partition_iargs_term left;
+          cv_partition_iargs_term right])
+  | Iarg_facet ((index,false),fraction,_,child) ->
+      list_mk_comb
+        (cv_partition_recurse_right_tm,
+         [cv_partition_num index;
+          cv_partition_num (cv_partition_fraction_numerator fraction);
+          cv_partition_num cv_partition_fraction_denominator;
+          cv_partition_iargs_term child])
+  | Iarg_facet ((index,true),fraction,_,child) ->
+      let reflected_fraction = 1.0 -. fraction in
+      list_mk_comb
+        (cv_partition_recurse_left_tm,
+         [cv_partition_num index;
+          cv_partition_num
+            (cv_partition_fraction_numerator reflected_fraction);
+          cv_partition_num cv_partition_fraction_denominator;
+          cv_partition_iargs_term child]);;
+
+let rec cv_partition_iargs_shape = function
+  | Iarg_leaf _ -> 1,0,0,1,0
+  | Iarg_bisect (_,left,right) ->
+      let ll,lf,lb,ln,ld = cv_partition_iargs_shape left in
+      let rl,rf,rb,rn,rd = cv_partition_iargs_shape right in
+      ll + rl,lf + rf,1 + lb + rb,1 + ln + rn,1 + max ld rd
+  | Iarg_facet (_,_,_,child) ->
+      let leaves,facets,bisects,nodes,depth =
+        cv_partition_iargs_shape child in
+      leaves,1 + facets,bisects,1 + nodes,1 + depth;;
+
+let rec cv_partition_term_shape tm =
+  let constructor,args = strip_comb tm in
+  if constructor = cv_partition_leaf_tm && args = [] then 1,0,0,1,0
+  else if constructor = cv_partition_bisect_tm then
+    match args with
+    | [_;left;right] ->
+        let ll,lf,lb,ln,ld = cv_partition_term_shape left in
+        let rl,rf,rb,rn,rd = cv_partition_term_shape right in
+        ll + rl,lf + rf,1 + lb + rb,1 + ln + rn,1 + max ld rd
+    | _ -> failwith "malformed encoded bisect partition"
+  else if constructor = cv_partition_recurse_left_tm ||
+          constructor = cv_partition_recurse_right_tm then
+    match args with
+    | [_;_;_;child] ->
+        let leaves,facets,bisects,nodes,depth =
+          cv_partition_term_shape child in
+        leaves,1 + facets,bisects,1 + nodes,1 + depth
+    | _ -> failwith "malformed encoded facet partition"
+  else failwith "unknown encoded partition constructor";;
+
+end;;
