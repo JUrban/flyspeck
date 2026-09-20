@@ -1,0 +1,49 @@
+(* ======================================================================== *)
+(* Proof-producing batches of exact positive Flyspeck float products.       *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. Exact products retain their ordinary HOL      *)
+(* equality proofs; their complete sum and one final upward rounding are     *)
+(* discharged by the reflected polynomial evaluator.                        *)
+(* ======================================================================== *)
+
+needs "arith/cv_compute_float_sum.hl";;
+needs "arith/arith_float.hl";;
+
+module Cv_compute_float_polynomial = struct
+
+open Arith_float;;
+open Cv_compute_float_sum;;
+
+let rec cv_exact_positive_float_product factors =
+  match factors with
+  | [] -> failwith "cv_exact_positive_float_product: empty product"
+  | [factor] -> REFL factor
+  | factor :: tail ->
+      let tail_eq = cv_exact_positive_float_product tail in
+      let tail_result = rand (concl tail_eq) in
+      let product_congruence =
+        AP_TERM (mk_comb (`(*):real->real->real`,factor)) tail_eq in
+      let product_eq = float_mul_eq factor tail_result in
+      TRANS product_congruence product_eq;;
+
+let rec cv_product_sum_eq product_eqs =
+  match product_eqs with
+  | [] -> REFL `&0`
+  | product_eq :: tail ->
+      MK_BINOP `(+):real->real->real`
+        (product_eq,cv_product_sum_eq tail);;
+
+let cv_float_product_sum_hi p monomials =
+  if monomials = [] then
+    failwith "cv_float_product_sum_hi: empty polynomial"
+  else
+    let product_eqs = map cv_exact_positive_float_product monomials in
+    let product_results = map (rand o concl) product_eqs in
+    let reflected_bound = cv_float_sum_hi p product_results in
+    let product_sum_eq = cv_product_sum_eq product_eqs in
+    let result = rand (concl reflected_bound) in
+    let inequality_eq =
+      AP_THM (AP_TERM `(<=):real->real->bool` product_sum_eq) result in
+    EQ_MP (SYM inequality_eq) reflected_bound;;
+
+end;;

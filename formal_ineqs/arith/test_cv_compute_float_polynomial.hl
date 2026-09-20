@@ -1,0 +1,98 @@
+needs "arith/cv_compute_float_polynomial.hl";;
+
+let cv_float_polynomial_test_mk n e =
+  let n_tm = rand (Arith_num.mk_numeral_array (num n)) and
+      e_tm = rand (Arith_num.mk_small_numeral_array e) in
+  list_mk_comb (`float_num`,[`F`;n_tm;e_tm]);;
+
+let cv_float_polynomial_test_ws =
+  [cv_float_polynomial_test_mk 2 47;
+   cv_float_polynomial_test_mk 3 46;
+   cv_float_polynomial_test_mk 5 45;
+   cv_float_polynomial_test_mk 7 44;
+   cv_float_polynomial_test_mk 11 43;
+   cv_float_polynomial_test_mk 13 42];;
+
+let cv_float_polynomial_test_ds =
+  [cv_float_polynomial_test_mk 101 46;
+   cv_float_polynomial_test_mk 103 45;
+   cv_float_polynomial_test_mk 107 44;
+   cv_float_polynomial_test_mk 109 43;
+   cv_float_polynomial_test_mk 113 42;
+   cv_float_polynomial_test_mk 127 41];;
+
+let cv_float_polynomial_test_dds =
+  [cv_float_polynomial_test_mk 131 45;
+   cv_float_polynomial_test_mk 137 44;
+   cv_float_polynomial_test_mk 139 43;
+   cv_float_polynomial_test_mk 149 42;
+   cv_float_polynomial_test_mk 151 41;
+   cv_float_polynomial_test_mk 157 40;
+   cv_float_polynomial_test_mk 163 45;
+   cv_float_polynomial_test_mk 167 44;
+   cv_float_polynomial_test_mk 173 43;
+   cv_float_polynomial_test_mk 179 42;
+   cv_float_polynomial_test_mk 181 41;
+   cv_float_polynomial_test_mk 191 40;
+   cv_float_polynomial_test_mk 193 45;
+   cv_float_polynomial_test_mk 197 44;
+   cv_float_polynomial_test_mk 199 43;
+   cv_float_polynomial_test_mk 211 42;
+   cv_float_polynomial_test_mk 223 41;
+   cv_float_polynomial_test_mk 227 40;
+   cv_float_polynomial_test_mk 229 45;
+   cv_float_polynomial_test_mk 233 44;
+   cv_float_polynomial_test_mk 239 43];;
+
+let cv_float_polynomial_test_first =
+  map2 (fun w d -> [w;d])
+    cv_float_polynomial_test_ws cv_float_polynomial_test_ds;;
+
+let cv_float_polynomial_test_second =
+  let rec lower_rows i remaining_dds =
+    if i > 6 then [] else
+    let wi = List.nth cv_float_polynomial_test_ws (i - 1) in
+    let row_dds,tail_dds = chop_list i remaining_dds in
+    let w_prefix,_ = chop_list i cv_float_polynomial_test_ws in
+    map2 (fun wj dd -> [wi;wj;dd]) w_prefix row_dds @
+      lower_rows (i + 1) tail_dds in
+  lower_rows 1 cv_float_polynomial_test_dds;;
+
+let cv_float_polynomial_test_first_th =
+  Cv_compute_float_polynomial.cv_float_product_sum_hi 8
+    cv_float_polynomial_test_first;;
+
+let cv_float_polynomial_test_second_th =
+  Cv_compute_float_polynomial.cv_float_product_sum_hi 8
+    cv_float_polynomial_test_second;;
+
+let rec cv_float_polynomial_test_product factors =
+  match factors with
+  | [] -> failwith "cv_float_polynomial_test_product"
+  | [factor] -> factor
+  | factor :: tail ->
+      mk_binop `(*):real->real->real` factor
+        (cv_float_polynomial_test_product tail);;
+
+let cv_float_polynomial_test_lhs monomials =
+  itlist
+    (fun factors sum ->
+      mk_binop `(+):real->real->real`
+        (cv_float_polynomial_test_product factors) sum)
+    monomials `&0`;;
+
+if hyp cv_float_polynomial_test_first_th <> [] ||
+   hyp cv_float_polynomial_test_second_th <> [] then
+  failwith "reflected float polynomial has assumptions";;
+
+if lhand (concl cv_float_polynomial_test_first_th) <>
+     cv_float_polynomial_test_lhs cv_float_polynomial_test_first ||
+   lhand (concl cv_float_polynomial_test_second_th) <>
+     cv_float_polynomial_test_lhs cv_float_polynomial_test_second then
+  failwith "reflected float polynomial theorem interface mismatch";;
+
+if length cv_float_polynomial_test_first <> 6 ||
+   length cv_float_polynomial_test_second <> 21 then
+  failwith "reflected float polynomial Taylor shape mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_POLYNOMIAL_OK";;
