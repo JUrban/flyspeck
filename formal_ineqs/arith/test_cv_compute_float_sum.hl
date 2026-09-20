@@ -1,0 +1,29 @@
+needs "arith/cv_compute_float_sum.hl";;
+
+let cv_float_sum_test_mk n e =
+  let n_tm = rand (Arith_num.mk_numeral_array (num n)) and
+      e_tm = rand (Arith_num.mk_small_numeral_array e) in
+  list_mk_comb (`float_num`,[`F`;n_tm;e_tm]);;
+
+let cv_float_sum_test_terms =
+  [cv_float_sum_test_mk 101 43;
+   cv_float_sum_test_mk 103 44;
+   cv_float_sum_test_mk 107 45;
+   cv_float_sum_test_mk 109 46;
+   cv_float_sum_test_mk 113 43;
+   cv_float_sum_test_mk 127 45];;
+
+let cv_float_sum_test_th =
+  Cv_compute_float_sum.cv_float_sum_hi 8 cv_float_sum_test_terms;;
+
+if hyp cv_float_sum_test_th <> [] then
+  failwith "reflected float sum has assumptions";;
+
+let cv_float_sum_test_expected_lhs =
+  itlist (fun tm acc -> mk_binop `(+):real->real->real` tm acc)
+    cv_float_sum_test_terms `&0`;;
+
+if lhand (concl cv_float_sum_test_th) <> cv_float_sum_test_expected_lhs then
+  failwith "reflected float sum theorem interface mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_SUM_OK";;

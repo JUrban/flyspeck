@@ -1,0 +1,200 @@
+(* ======================================================================== *)
+(* Proof-producing reflected sums of nonnegative Flyspeck float values.     *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. Exponent alignment, powers, the full sum, and *)
+(* the final upward rounding execute behind one Candle Kernel.compute call. *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_native_float_polynomial.ml";;
+needs "arith/cv_compute_num_exp.hl";;
+needs "arith/float_theory.hl";;
+
+module Cv_compute_float_sum = struct
+
+open Candle_cv_native_float_core;;
+open Candle_cv_native_float_polynomial;;
+open Cv_compute_num_exp;;
+open Num_exp_theory;;
+open Float_theory;;
+
+let candle_nf_singleton_terms_def = define
+ `(candle_nf_singleton_terms ([]:(num#num)list) =
+     ([]:((num#num)list)list)) /\
+  (candle_nf_singleton_terms (CONS h t) =
+     CONS (CONS h []) (candle_nf_singleton_terms t))`;;
+
+let candle_nf_pair_num_sum_def = define
+ `(candle_nf_pair_num_sum ([]:(num#num)list) = 0) /\
+  (candle_nf_pair_num_sum (CONS h t) =
+     num_exp (FST h) (SND h) + candle_nf_pair_num_sum t)`;;
+
+let candle_nf_pair_float_sum_def = define
+ `(candle_nf_pair_float_sum ([]:(num#num)list) = &0) /\
+  (candle_nf_pair_float_sum (CONS h t) =
+     float_num F (FST h) (SND h) + candle_nf_pair_float_sum t)`;;
+
+let candle_nf_singleton_terms_value = prove
+ (`!pairs.
+     candle_nf_polynomial_value arith_base
+       (candle_nf_singleton_terms pairs) =
+     candle_nf_pair_num_sum pairs`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC[candle_nf_singleton_terms_def;
+                  candle_nf_polynomial_value_def;
+                  candle_nf_monomial_value_def;
+                  candle_nf_monomial_mantissa_def;
+                  candle_nf_monomial_exponent_def;
+                  candle_nf_pair_num_sum_def; num_exp; GSYM arith_base_def;
+                  FST; SND; ADD_CLAUSES; MULT_CLAUSES]);;
+
+let candle_nf_pair_float_sum_value = prove
+ (`!pairs.
+     candle_nf_pair_float_sum pairs =
+     &(candle_nf_pair_num_sum pairs) / &(num_exp 1 min_exp)`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC[candle_nf_pair_float_sum_def;
+                  candle_nf_pair_num_sum_def; float; REAL_MUL_LID;
+                  real_div; FST; SND; REAL_MUL_LZERO] THEN
+  REWRITE_TAC[GSYM REAL_OF_NUM_ADD] THEN
+  CONV_TAC REAL_RING);;
+
+let candle_nf_pair_float_sum_bound = prove
+ (`!pairs n e.
+     candle_nf_pair_num_sum pairs <= num_exp n e
+     ==> candle_nf_pair_float_sum pairs <= float_num F n e`,
+  REPEAT STRIP_TAC THEN
+  REWRITE_TAC[candle_nf_pair_float_sum_value; float;
+              REAL_MUL_LID; real_div] THEN
+  MATCH_MP_TAC REAL_LE_RMUL THEN
+  ASM_REWRITE_TAC[REAL_OF_NUM_LE; REAL_LE_INV_EQ; REAL_POS]);;
+
+let cv_dest_positive_float tm =
+  let op,args = strip_comb tm in
+  if not (is_const op) || fst (dest_const op) <> "float_num" then
+    failwith "cv_dest_positive_float: not float_num"
+  else
+    match args with
+    | [sign;n;e] when sign = `F` -> n,e
+    | _ -> failwith "cv_dest_positive_float: expected positive float";;
+
+let cv_float_sum_hi (p:int) (floats:term list) : thm =
+  if p <= 0 then failwith "cv_float_sum_hi: nonpositive precision" else
+  if floats = [] then failwith "cv_float_sum_hi: empty sum" else
+  let raw_pairs = map cv_dest_positive_float floats in
+  let conversions =
+    map
+      (fun (n_hash,e_hash) ->
+        cv_hash_to_numeral n_hash,cv_hash_to_numeral e_hash)
+      raw_pairs in
+  let numeral_pairs =
+    map (fun (n_th,e_th) -> rand (concl n_th),rand (concl e_th))
+      conversions in
+  let exponents = map (dest_numeral o snd) numeral_pairs in
+  let target =
+    end_itlist
+      (fun left right -> if compare_num left right < 0 then left else right)
+      exponents in
+  let target_tm = mk_numeral target in
+  let pairs_tm =
+    mk_list (map mk_pair numeral_pairs,`:num#num`) in
+  let terms_tm =
+    mk_comb (`candle_nf_singleton_terms`,pairs_tm) in
+  let items =
+    map2
+      (fun (n_tm,_) exponent ->
+        let delta = exponent -/ target in
+        mk_pair
+          (mk_list ([n_tm],`:num`),
+           mk_list (replicate `0` (Num.int_of_num delta),`:num`)))
+      numeral_pairs exponents in
+  let items_tm = mk_list (items,`:num list#num list`) in
+  let alignment_tm =
+    list_mk_comb
+      (`candle_nf_fueled_alignment`,[target_tm;terms_tm;items_tm]) in
+  let alignment_rewrite =
+    REWRITE_CONV
+      [candle_nf_singleton_terms_def; candle_nf_fueled_alignment_def;
+       candle_nf_product_def; candle_nf_monomial_mantissa_def;
+       candle_nf_monomial_exponent_def; FST; SND; LENGTH]
+      alignment_tm in
+  let alignment =
+    EQT_ELIM
+      (TRANS alignment_rewrite
+        (NUM_REDUCE_CONV (rand (concl alignment_rewrite)))) in
+  let items_rep =
+    REWRITE_CONV
+      [candle_nf_fueled_items_def; candle_nf_fueled_item_def;
+       candle_nf_num_list_def; candle_nf_fuel_def; FST; SND]
+      (mk_comb (`candle_nf_fueled_items`,items_tm)) in
+  let base = Arith_num.arith_base in
+  let base_tm = mk_small_numeral base in
+  let limit_tm = mk_numeral (power_num (num base) (num p)) in
+  let max_digits =
+    end_itlist Int.max
+      (map (String.length o string_of_num o dest_numeral o fst)
+        numeral_pairs) in
+  let max_delta =
+    end_itlist Int.max
+      (map (fun exponent -> Num.int_of_num (exponent -/ target)) exponents) in
+  let fuel_tm =
+    mk_list (replicate `0` (max_digits + max_delta + 16),`:num`) in
+  let fuel_rep =
+    REWRITE_CONV[candle_nf_fuel_def]
+      (mk_comb (`candle_nf_fuel`,fuel_tm)) in
+  let expression =
+    list_mk_comb
+      (`candle_cv_nf_fueled_polynomial_round_hi`,
+       [mk_comb (`Cexp_num`,base_tm);
+        mk_comb (`Cexp_num`,limit_tm);
+        rand (concl fuel_rep);
+        mk_comb (`Cexp_num`,target_tm);
+        rand (concl items_rep)]) in
+  let computation =
+    compute candle_cv_nf_fueled_polynomial_compute_eqs expression in
+  let n_cval,e_cval = cv_dest_cval_pair (rand (concl computation)) in
+  let n_result = cv_dest_cval_num n_cval and
+      e_result = cv_dest_cval_num e_cval in
+  let correct =
+    SPECL [fuel_tm;base_tm;limit_tm;target_tm;items_tm]
+      candle_cv_nf_fueled_polynomial_round_hi_correct in
+  let correct = PURE_REWRITE_RULE[fuel_rep;items_rep] correct in
+  let represented_result = TRANS (SYM correct) computation in
+  let round_result =
+    REWRITE_RULE
+      [candle_nf_pair_roundtrip; candle_nf_decode_pair_def;
+       candle_nf_decode_num_def]
+      (AP_TERM `candle_nf_decode_pair` represented_result) in
+  let sound =
+    SPECL [fuel_tm;base_tm;limit_tm;target_tm;terms_tm;items_tm]
+      candle_nf_fueled_polynomial_round_hi_sound in
+  let sound =
+    MP sound
+      (CONJ
+        (EQT_ELIM (NUM_REDUCE_CONV (mk_neg (mk_eq (base_tm,`0`)))))
+        alignment) in
+  let sound = REWRITE_RULE[round_result;FST;SND] sound in
+  let value_bridge =
+    REWRITE_RULE[arith_base_def]
+      (SPEC pairs_tm candle_nf_singleton_terms_value) in
+  let num_sound =
+    PURE_REWRITE_RULE[value_bridge; GSYM num_exp] sound in
+  let float_sound =
+    MP (SPECL [pairs_tm;n_result;e_result]
+          candle_nf_pair_float_sum_bound)
+      num_sound in
+  let float_sound =
+    REWRITE_RULE[candle_nf_pair_float_sum_def;FST;SND]
+      float_sound in
+  let first_n_hash,first_e_hash = hd raw_pairs in
+  let n_result_hash =
+    cv_numeral_to_hash (cv_is_wrapped_numeral first_n_hash) n_result and
+      e_result_hash =
+        cv_numeral_to_hash (cv_is_wrapped_numeral first_e_hash) e_result in
+  let input_rewrites =
+    List.flatten
+      (map (fun (n_th,e_th) -> [GSYM n_th;GSYM e_th]) conversions) in
+  PURE_REWRITE_RULE
+    (n_result_hash :: e_result_hash :: input_rewrites)
+    float_sound;;
+
+end;;
