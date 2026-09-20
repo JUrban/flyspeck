@@ -1,0 +1,152 @@
+(* ======================================================================== *)
+(* Proof-producing leaf-to-root reconstruction for Flyspeck Iarg trees.     *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE.  The caller supplies a theorem producer for   *)
+(* each exact leaf proposition.  This adapter only combines those kernel    *)
+(* theorems through [candle_partition_holds] and the proved root theorem.    *)
+(* ======================================================================== *)
+
+needs "arith/cv_compute_partition_iargs.hl";;
+needs "arith/cv_compute_partition_ineqm.hl";;
+
+module Cv_compute_partition_ineqm_reconstruct = struct
+
+open Candle_cv_partition_composition;;
+open Cv_compute_partition_iargs;;
+open Cv_compute_partition_ineqm;;
+open Break_case_exec;;
+
+let cv_partition_ineqm_domain_var =
+  `candle_partition_domain:(real#real)list`;;
+
+let cv_partition_ineqm_predicate x f =
+  mk_abs
+    (cv_partition_ineqm_domain_var,
+     mk_ineqm x cv_partition_ineqm_domain_var f);;
+
+let cv_partition_ineqm_frac_left =
+  `\i n q d:(real#real)list. frac_left i (DECIMAL n q) d`;;
+let cv_partition_ineqm_frac_right =
+  `\i n q d:(real#real)list. frac_right i (DECIMAL n q) d`;;
+
+let cv_partition_ineqm_holds_const =
+  `candle_partition_holds:
+     ((real#real)list->bool)->
+     (num->(real#real)list->(real#real)list)->
+     (num->(real#real)list->(real#real)list)->
+     (num->num->num->(real#real)list->(real#real)list)->
+     (num->num->num->(real#real)list->(real#real)list)->
+     (real#real)list->candle_partition->bool`;;
+
+let cv_partition_ineqm_bisect_left =
+  `\i d:(real#real)list. bisect_left i d`;;
+let cv_partition_ineqm_bisect_right =
+  `\i d:(real#real)list. bisect_right i d`;;
+
+let cv_partition_ineqm_holds_term x d f tree =
+  list_mk_comb
+    (cv_partition_ineqm_holds_const,
+     [cv_partition_ineqm_predicate x f;
+      cv_partition_ineqm_bisect_left;
+      cv_partition_ineqm_bisect_right;
+      cv_partition_ineqm_frac_left; cv_partition_ineqm_frac_right;
+      d;tree]);;
+
+let cv_partition_ineqm_leaf_def,
+    cv_partition_ineqm_bisect_def,
+    cv_partition_ineqm_recurse_left_def,
+    cv_partition_ineqm_recurse_right_def =
+  match CONJUNCTS candle_partition_holds_def with
+  | [leaf;bisect;recurse_left;recurse_right] ->
+      leaf,bisect,recurse_left,recurse_right
+  | _ -> failwith "unexpected candle_partition_holds definition";;
+
+let cv_partition_ineqm_fold definition target evidence =
+  let equation = BETA_RULE (REWR_CONV definition target) in
+  EQ_MP (SYM equation) (BETA_RULE evidence);;
+
+let cv_partition_ineqm_checked_leaf leaf_prover proposition =
+  let theorem = leaf_prover proposition in
+  if not (aconv (concl theorem) proposition) then
+    failwith "cv partition leaf theorem conclusion mismatch";
+  theorem;;
+
+let rec cv_partition_ineqm_build_holds leaf_prover x d f = function
+  | Iarg_leaf _ ->
+      let tree = cv_partition_leaf_tm in
+      let leaf =
+        cv_partition_ineqm_checked_leaf leaf_prover (mk_ineqm x d f) in
+      let target = cv_partition_ineqm_holds_term x d f tree in
+      tree,
+      cv_partition_ineqm_fold cv_partition_ineqm_leaf_def target leaf
+  | Iarg_bisect (index,left,right) ->
+      let left_domain = mk_bisect_left index d in
+      let left_tree,left_theorem =
+        cv_partition_ineqm_build_holds leaf_prover x
+          left_domain f left in
+      let right_tree,right_theorem =
+        cv_partition_ineqm_build_holds leaf_prover x
+          (mk_bisect_right index d) f right in
+      let tree =
+        list_mk_comb
+          (cv_partition_bisect_tm,
+           [cv_partition_num index;left_tree;right_tree]) in
+      tree,
+      cv_partition_ineqm_fold
+        cv_partition_ineqm_bisect_def
+        (cv_partition_ineqm_holds_term x d f tree)
+        (CONJ left_theorem right_theorem)
+  | Iarg_facet ((index,false),fraction,_,child) ->
+      let child_tree,child_theorem =
+        cv_partition_ineqm_build_holds leaf_prover x
+          (mk_frac_right index fraction d) f child in
+      let immediate =
+        cv_partition_ineqm_checked_leaf leaf_prover
+          (mk_ineqm x (mk_frac_left index fraction d) f) in
+      let tree =
+        list_mk_comb
+          (cv_partition_recurse_right_tm,
+           [cv_partition_num index;
+            cv_partition_num
+              (cv_partition_fraction_numerator fraction);
+            cv_partition_num cv_partition_fraction_denominator;
+            child_tree]) in
+      tree,
+      cv_partition_ineqm_fold
+        cv_partition_ineqm_recurse_right_def
+        (cv_partition_ineqm_holds_term x d f tree)
+        (CONJ immediate child_theorem)
+  | Iarg_facet ((index,true),fraction,_,child) ->
+      let reflected_fraction = 1.0 -. fraction in
+      let child_tree,child_theorem =
+        cv_partition_ineqm_build_holds leaf_prover x
+          (mk_frac_left index reflected_fraction d) f child in
+      let immediate =
+        cv_partition_ineqm_checked_leaf leaf_prover
+          (mk_ineqm x (mk_frac_right index reflected_fraction d) f) in
+      let tree =
+        list_mk_comb
+          (cv_partition_recurse_left_tm,
+           [cv_partition_num index;
+            cv_partition_num
+              (cv_partition_fraction_numerator reflected_fraction);
+            cv_partition_num cv_partition_fraction_denominator;
+            child_tree]) in
+      tree,
+      cv_partition_ineqm_fold
+        cv_partition_ineqm_recurse_left_def
+        (cv_partition_ineqm_holds_term x d f tree)
+        (CONJ child_theorem immediate);;
+
+let cv_partition_ineqm_reconstruct leaf_prover length_theorem x d f tree =
+  let encoded,holds =
+    cv_partition_ineqm_build_holds leaf_prover x d f tree in
+  let sound =
+    SPECL [x;f;encoded;d] cv_partition_ineqm_composition_sound in
+  let result = MATCH_MP sound (CONJ length_theorem holds) in
+  let expected = mk_ineqm x d f in
+  if not (aconv (concl result) expected) then
+    failwith "cv partition root theorem conclusion mismatch";
+  result;;
+
+end;;
