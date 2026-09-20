@@ -149,4 +149,28 @@ let cv_partition_ineqm_reconstruct leaf_prover length_theorem x d f tree =
     failwith "cv partition root theorem conclusion mismatch";
   result;;
 
+let cv_partition_ineqm_length_theorem x d =
+  let proposition =
+    mk_eq
+      (mk_comb (`LENGTH:real list->num`,x),
+       mk_comb (`LENGTH:(real#real)list->num`,d)) in
+  EQT_ELIM (REWRITE_CONV[LENGTH] proposition);;
+
+let cv_partition_ineqm_reconstruct_cases leaf_prover tm tree =
+  let generalized = concl (SPEC_ALL (ASSUME tm)) in
+  let equation = REWRITE_CONV[GSYM ineq6m] generalized in
+  let root = rhs (concl equation) in
+  let operator,arguments = strip_comb root in
+  let x,d,f =
+    match arguments with
+    | [x;d;f] when operator = `ineqm` -> x,d,f
+    | _ -> failwith "cv partition expected a six-variable ineq root" in
+  let reconstructed =
+    cv_partition_ineqm_reconstruct leaf_prover
+      (cv_partition_ineqm_length_theorem x d) x d f tree in
+  let result = EQ_MP (SYM equation) reconstructed in
+  if not (aconv (concl result) generalized) then
+    failwith "cv partition ordinary inequality conclusion mismatch";
+  result;;
+
 end;;

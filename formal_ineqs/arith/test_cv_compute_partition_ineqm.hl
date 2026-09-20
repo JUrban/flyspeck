@@ -7,6 +7,8 @@ type ('a) iargs =
 
 let ineqm = new_definition
  `ineqm (x:real list) (d:(real#real)list) (f:bool) <=> T`;;
+let ineq = new_definition
+ `ineq (d:(real#real#real)list) (f:bool) <=> T`;;
 let bisect_left = new_definition
  `bisect_left (i:num) (d:(real#real)list) = d`;;
 let bisect_right = new_definition
@@ -61,6 +63,15 @@ let ineqm_frac_thm = prove
      ineqm x (frac_right i r d) f ==>
      ineqm x d f`,
   REWRITE_TAC[ineqm]);;
+let ineq6m = prove
+ (`!x1 x2 x3 x4 x5 x6 a1 a2 a3 a4 a5 a6
+     b1 b2 b3 b4 b5 b6 f.
+     ineqm [x1;x2;x3;x4;x5;x6]
+       [(a1,b1);(a2,b2);(a3,b3);(a4,b4);(a5,b5);(a6,b6)] f =
+     ineq
+       [(a1,x1,b1);(a2,x2,b2);(a3,x3,b3);
+        (a4,x4,b4);(a5,x5,b5);(a6,x6,b6)] f`,
+  REWRITE_TAC[ineqm;ineq]);;
 
 end;;
 
@@ -109,6 +120,18 @@ let cv_partition_ineqm_test_reconstructed =
       (0,Iarg_facet ((0,false),0.4,0,Iarg_leaf 0),
        Iarg_facet ((0,true),0.3,0,Iarg_leaf 0)));;
 
+let cv_partition_ineqm_test_ordinary =
+  `ineq
+    [(#0,#0,#1);(#0,#0,#1);(#0,#0,#1);
+     (#0,#0,#1);(#0,#0,#1);(#0,#0,#1)] T`;;
+
+let cv_partition_ineqm_test_reconstructed_ordinary =
+  cv_partition_ineqm_reconstruct_cases
+    cv_partition_ineqm_test_leaf cv_partition_ineqm_test_ordinary
+    (Iarg_bisect
+      (0,Iarg_facet ((1,false),0.4,0,Iarg_leaf 0),
+       Iarg_facet ((2,true),0.3,0,Iarg_leaf 0)));;
+
 if hyp cv_partition_ineqm_test_sound <> [] ||
    not
      (aconv (concl cv_partition_ineqm_test_sound)
@@ -116,7 +139,11 @@ if hyp cv_partition_ineqm_test_sound <> [] ||
    hyp cv_partition_ineqm_test_reconstructed <> [] ||
    not
      (aconv (concl cv_partition_ineqm_test_reconstructed)
-       `ineqm [#0] [(#0,#1)] T`)
+       `ineqm [#0] [(#0,#1)] T`) ||
+   hyp cv_partition_ineqm_test_reconstructed_ordinary <> [] ||
+   not
+     (aconv (concl cv_partition_ineqm_test_reconstructed_ordinary)
+       cv_partition_ineqm_test_ordinary)
 then failwith "Flyspeck partition ineqm theorem interface mismatch";;
 
 print_endline "CANDLE_CV_PARTITION_INEQM_OK";;
