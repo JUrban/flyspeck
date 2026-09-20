@@ -6,11 +6,13 @@
 (* ======================================================================== *)
 
 needs "candle/cv_compute_native_float_core.ml";;
+needs "candle/cv_compute_native_float_mul.ml";;
 needs "arith/num_exp_theory.hl";;
 
 module Cv_compute_num_exp = struct
 
 open Candle_cv_native_float_core;;
+open Candle_cv_native_float_mul;;
 
 let cv_dest_num_exp tm =
   let ltm,e_tm = dest_comb tm in
@@ -132,5 +134,89 @@ let cv_num_exp_round direction p tm =
 
 let cv_num_exp_lo = cv_num_exp_round false;;
 let cv_num_exp_hi = cv_num_exp_round true;;
+
+(* Reflect the complete multiplication-and-rounding operation at once.  This
+   deliberately avoids constructing the exact, potentially very large
+   intermediate num_exp theorem before rounding it back to [p] digits. *)
+let cv_num_exp_mul_round direction p tm1 tm2 =
+  if p <= 0 then failwith "cv_num_exp_mul_round: nonpositive precision" else
+  let n1_hash,e1_hash = cv_dest_num_exp tm1 and
+      n2_hash,e2_hash = cv_dest_num_exp tm2 in
+  let n_result_wrapped = cv_is_wrapped_numeral n1_hash and
+      e_result_wrapped = cv_is_wrapped_numeral e1_hash in
+  let n1_to_numeral = cv_hash_to_numeral n1_hash and
+      e1_to_numeral = cv_hash_to_numeral e1_hash and
+      n2_to_numeral = cv_hash_to_numeral n2_hash and
+      e2_to_numeral = cv_hash_to_numeral e2_hash in
+  let n1_tm = rand (concl n1_to_numeral) and
+      e1_tm = rand (concl e1_to_numeral) and
+      n2_tm = rand (concl n2_to_numeral) and
+      e2_tm = rand (concl e2_to_numeral) in
+  let n1 = dest_numeral n1_tm and n2 = dest_numeral n2_tm in
+  let base = Arith_num.arith_base in
+  let base_tm = mk_small_numeral base in
+  let limit_tm = mk_numeral (power_num (num base) (num p)) in
+  let fuel_count =
+    String.length (string_of_num n1) + String.length (string_of_num n2) + 2 in
+  let fuel_tm = mk_list (replicate `0` fuel_count,`:num`) in
+  let fuel_rep =
+    REWRITE_CONV[candle_nf_fuel_def]
+      (mk_comb (`candle_nf_fuel`,fuel_tm)) in
+  let fuel_cval = rand (concl fuel_rep) in
+  let pair1 = mk_pair (n1_tm,e1_tm) and pair2 = mk_pair (n2_tm,e2_tm) in
+  let pair1_cval =
+    list_mk_comb
+      (`Cexp_pair`,[mk_comb (`Cexp_num`,n1_tm); mk_comb (`Cexp_num`,e1_tm)]) and
+      pair2_cval =
+        list_mk_comb
+          (`Cexp_pair`,[mk_comb (`Cexp_num`,n2_tm); mk_comb (`Cexp_num`,e2_tm)]) in
+  let round_const,correct_thm,sound_thm =
+    if direction then
+      (`candle_cv_nf_mul_round_hi`,
+       candle_cv_nf_mul_round_hi_correct,
+       candle_nf_mul_round_hi_sound)
+    else
+      (`candle_cv_nf_mul_round_lo`,
+       candle_cv_nf_mul_round_lo_correct,
+       candle_nf_mul_round_lo_sound) in
+  let expression =
+    list_mk_comb
+      (round_const,
+       [mk_comb (`Cexp_num`,base_tm);
+        mk_comb (`Cexp_num`,limit_tm);
+        fuel_cval; pair1_cval; pair2_cval]) in
+  let computation = compute candle_cv_nf_mul_round_compute_eqs expression in
+  let n_cval,e_cval = cv_dest_cval_pair (rand (concl computation)) in
+  let n_result = cv_dest_cval_num n_cval and
+      e_result = cv_dest_cval_num e_cval in
+  let correct = SPECL [fuel_tm; base_tm; limit_tm; pair1; pair2] correct_thm in
+  let correct =
+    PURE_REWRITE_RULE[fuel_rep; candle_nf_pair_def; FST; SND] correct in
+  let represented_result = TRANS (SYM correct) computation in
+  let decoded_result = AP_TERM `candle_nf_decode_pair` represented_result in
+  let round_result =
+    REWRITE_RULE
+      [candle_nf_pair_roundtrip;
+       candle_nf_decode_pair_def;
+       candle_nf_decode_num_def]
+      decoded_result in
+  let sound = SPECL [fuel_tm; base_tm; limit_tm; pair1; pair2] sound_thm in
+  let sound =
+    if direction then MP sound (EQT_ELIM (NUM_REDUCE_CONV
+      (mk_neg (mk_eq (base_tm,`0`))))) else sound in
+  let sound =
+    REWRITE_RULE[round_result; candle_nf_value_def; FST; SND] sound in
+  let num_exp_sound =
+    PURE_REWRITE_RULE[GSYM Num_exp_theory.num_exp] sound in
+  let n_result_hash = cv_numeral_to_hash n_result_wrapped n_result and
+      e_result_hash = cv_numeral_to_hash e_result_wrapped e_result in
+  PURE_REWRITE_RULE
+    [n_result_hash; e_result_hash;
+     GSYM n1_to_numeral; GSYM e1_to_numeral;
+     GSYM n2_to_numeral; GSYM e2_to_numeral]
+    num_exp_sound;;
+
+let cv_num_exp_mul_lo = cv_num_exp_mul_round false;;
+let cv_num_exp_mul_hi = cv_num_exp_mul_round true;;
 
 end;;

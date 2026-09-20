@@ -36,6 +36,7 @@ module type Arith_float_sig =
     val num_exp_lo_legacy : int -> term -> thm
     val num_exp_hi_legacy : int -> term -> thm
     val set_cv_compute_num_exp : bool -> unit
+    val set_cv_compute_num_exp_mul : bool -> unit
 
     val float_lt0 : term -> thm
     val float_gt0 : term -> thm
@@ -486,6 +487,11 @@ let cv_compute_num_exp_enabled = ref false;;
 
 let set_cv_compute_num_exp enabled =
   cv_compute_num_exp_enabled := enabled;;
+
+let cv_compute_num_exp_mul_enabled = ref false;;
+
+let set_cv_compute_num_exp_mul enabled =
+  cv_compute_num_exp_mul_enabled := enabled;;
 
 let num_exp_lo p tm =
   if !cv_compute_num_exp_enabled then
@@ -1278,11 +1284,17 @@ let float_mul_lo pp f1 f2 =
 	    
 	  let mul_th, n_tm, e_tm = 
 	    if flag then
-	      let th = num_exp_op_lo pp num_exp_mul num_exp1 num_exp2 in
+	      let th =
+	        if !cv_compute_num_exp_mul_enabled then
+	          Cv_compute_num_exp.cv_num_exp_mul_lo pp num_exp1 num_exp2
+	        else num_exp_op_lo pp num_exp_mul num_exp1 num_exp2 in
 	      let n_tm, e_tm = dest_num_exp (lhand (concl th)) in
 		th, n_tm, e_tm
 	    else
-	      let th = num_exp_op_hi pp num_exp_mul num_exp1 num_exp2 in
+	      let th =
+	        if !cv_compute_num_exp_mul_enabled then
+	          Cv_compute_num_exp.cv_num_exp_mul_hi pp num_exp1 num_exp2
+	        else num_exp_op_hi pp num_exp_mul num_exp1 num_exp2 in
 	      let n_tm, e_tm = dest_num_exp (rand (concl th)) in
 		th, n_tm, e_tm in
 	    
@@ -1323,11 +1335,17 @@ let float_mul_hi pp f1 f2 =
 	    
 	  let mul_th, n_tm, e_tm = 
 	    if flag then
-	      let th = num_exp_op_hi pp num_exp_mul num_exp1 num_exp2 in
+	      let th =
+	        if !cv_compute_num_exp_mul_enabled then
+	          Cv_compute_num_exp.cv_num_exp_mul_hi pp num_exp1 num_exp2
+	        else num_exp_op_hi pp num_exp_mul num_exp1 num_exp2 in
 	      let n_tm, e_tm = dest_num_exp (rand (concl th)) in
 		th, n_tm, e_tm
 	    else
-	      let th = num_exp_op_lo pp num_exp_mul num_exp1 num_exp2 in
+	      let th =
+	        if !cv_compute_num_exp_mul_enabled then
+	          Cv_compute_num_exp.cv_num_exp_mul_lo pp num_exp1 num_exp2
+	        else num_exp_op_lo pp num_exp_mul num_exp1 num_exp2 in
 	      let n_tm, e_tm = dest_num_exp (lhand (concl th)) in
 		th, n_tm, e_tm in
 	    

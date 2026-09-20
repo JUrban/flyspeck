@@ -46,4 +46,52 @@ if Cv_compute_num_exp.cv_is_wrapped_numeral cv_num_exp_test_raw_lo_n ||
    Cv_compute_num_exp.cv_is_wrapped_numeral cv_num_exp_test_raw_hi_n then
   failwith "raw reflected num_exp result was unexpectedly wrapped";;
 
+let cv_num_exp_test_n2 =
+  Arith_num.mk_numeral_array
+    (Num.num_of_string "987654321098765432109876543210") and
+    cv_num_exp_test_e2 =
+      Arith_num.mk_numeral_array (Num.num_of_int 19);;
+
+let cv_num_exp_test_tm2 =
+  mk_comb (mk_comb (`num_exp`,cv_num_exp_test_n2),cv_num_exp_test_e2);;
+
+let cv_num_exp_test_mul_lo =
+  Cv_compute_num_exp.cv_num_exp_mul_lo 4
+    cv_num_exp_test_tm cv_num_exp_test_tm2 and
+    cv_num_exp_test_mul_hi =
+      Cv_compute_num_exp.cv_num_exp_mul_hi 4
+        cv_num_exp_test_tm cv_num_exp_test_tm2;;
+
+if hyp cv_num_exp_test_mul_lo <> [] || hyp cv_num_exp_test_mul_hi <> [] then
+  failwith "reflected num_exp multiplication bound has assumptions";;
+
+let cv_num_exp_test_product =
+  mk_binop `( * ):num->num->num` cv_num_exp_test_tm cv_num_exp_test_tm2;;
+
+if rand (concl cv_num_exp_test_mul_lo) <> cv_num_exp_test_product ||
+   lhand (concl cv_num_exp_test_mul_hi) <> cv_num_exp_test_product then
+  failwith "reflected num_exp multiplication theorem interface mismatch";;
+
+let cv_num_exp_test_raw_tm2 =
+  let n,e = Cv_compute_num_exp.cv_dest_num_exp cv_num_exp_test_tm2 in
+  mk_comb (mk_comb (`num_exp`,rand n),rand e);;
+
+let cv_num_exp_test_raw_mul_lo =
+  Cv_compute_num_exp.cv_num_exp_mul_lo 4
+    cv_num_exp_test_raw_tm cv_num_exp_test_raw_tm2 and
+    cv_num_exp_test_raw_mul_hi =
+      Cv_compute_num_exp.cv_num_exp_mul_hi 4
+        cv_num_exp_test_raw_tm cv_num_exp_test_raw_tm2;;
+
+let cv_num_exp_test_raw_mul_lo_n,_ =
+  Cv_compute_num_exp.cv_dest_num_exp
+    (lhand (concl cv_num_exp_test_raw_mul_lo)) and
+    cv_num_exp_test_raw_mul_hi_n,_ =
+      Cv_compute_num_exp.cv_dest_num_exp
+        (rand (concl cv_num_exp_test_raw_mul_hi));;
+
+if Cv_compute_num_exp.cv_is_wrapped_numeral cv_num_exp_test_raw_mul_lo_n ||
+   Cv_compute_num_exp.cv_is_wrapped_numeral cv_num_exp_test_raw_mul_hi_n then
+  failwith "raw reflected num_exp multiplication result was unexpectedly wrapped";;
+
 print_endline "CANDLE_CV_NUM_EXP_OK";;

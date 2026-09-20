@@ -29,16 +29,48 @@ if hyp cv_arith_float_reflected_lo <> [] ||
   failwith "integrated reflected num_exp theorem has assumptions";;
 
 let cv_arith_float_f1 = Arith_float.mk_float 123456789 10 and
-    cv_arith_float_f2 = Arith_float.mk_float 987654321 11;;
-
-let cv_arith_float_mul_lo =
-  Arith_float.float_mul_lo 2 cv_arith_float_f1 cv_arith_float_f2 and
-    cv_arith_float_mul_hi =
-      Arith_float.float_mul_hi 2 cv_arith_float_f1 cv_arith_float_f2;;
-
-if hyp cv_arith_float_mul_lo <> [] || hyp cv_arith_float_mul_hi <> [] then
-  failwith "integrated reflected float multiplication has assumptions";;
+    cv_arith_float_f2 = Arith_float.mk_float 987654321 11 and
+    cv_arith_float_f2_neg = Arith_float.mk_float (-987654321) 11;;
 
 let _ = Arith_float.set_cv_compute_num_exp false;;
+let _ = Arith_float.set_cv_compute_num_exp_mul false;;
+
+let cv_arith_float_mul_legacy_lo =
+  Arith_float.float_mul_lo 2 cv_arith_float_f1 cv_arith_float_f2 and
+    cv_arith_float_mul_legacy_hi =
+      Arith_float.float_mul_hi 2 cv_arith_float_f1 cv_arith_float_f2 and
+    cv_arith_float_mul_legacy_neg_lo =
+      Arith_float.float_mul_lo 2 cv_arith_float_f1 cv_arith_float_f2_neg and
+    cv_arith_float_mul_legacy_neg_hi =
+      Arith_float.float_mul_hi 2 cv_arith_float_f1 cv_arith_float_f2_neg;;
+
+let _ = Arith_float.set_cv_compute_num_exp_mul true;;
+
+let cv_arith_float_mul_reflected_lo =
+  Arith_float.float_mul_lo 2 cv_arith_float_f1 cv_arith_float_f2 and
+    cv_arith_float_mul_reflected_hi =
+      Arith_float.float_mul_hi 2 cv_arith_float_f1 cv_arith_float_f2 and
+    cv_arith_float_mul_reflected_neg_lo =
+      Arith_float.float_mul_lo 2 cv_arith_float_f1 cv_arith_float_f2_neg and
+    cv_arith_float_mul_reflected_neg_hi =
+      Arith_float.float_mul_hi 2 cv_arith_float_f1 cv_arith_float_f2_neg;;
+
+if concl cv_arith_float_mul_legacy_lo <>
+     concl cv_arith_float_mul_reflected_lo ||
+   concl cv_arith_float_mul_legacy_hi <>
+     concl cv_arith_float_mul_reflected_hi ||
+   concl cv_arith_float_mul_legacy_neg_lo <>
+     concl cv_arith_float_mul_reflected_neg_lo ||
+   concl cv_arith_float_mul_legacy_neg_hi <>
+     concl cv_arith_float_mul_reflected_neg_hi then
+  failwith "legacy/reflected float multiplication conclusions differ";;
+
+if hyp cv_arith_float_mul_reflected_lo <> [] ||
+   hyp cv_arith_float_mul_reflected_hi <> [] ||
+   hyp cv_arith_float_mul_reflected_neg_lo <> [] ||
+   hyp cv_arith_float_mul_reflected_neg_hi <> [] then
+  failwith "integrated reflected float multiplication has assumptions";;
+
+let _ = Arith_float.set_cv_compute_num_exp_mul false;;
 
 print_endline "CANDLE_CV_ARITH_FLOAT_OK";;
