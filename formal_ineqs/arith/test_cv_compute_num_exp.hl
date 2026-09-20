@@ -14,11 +14,36 @@ let cv_num_exp_test_lo =
     cv_num_exp_test_hi =
       Cv_compute_num_exp.cv_num_exp_hi 4 cv_num_exp_test_tm;;
 
+let cv_num_exp_test_raw_tm =
+  let n,e = Cv_compute_num_exp.cv_dest_num_exp cv_num_exp_test_tm in
+  mk_comb (mk_comb (`num_exp`,rand n),rand e);;
+
+let cv_num_exp_test_raw_lo =
+  Cv_compute_num_exp.cv_num_exp_lo 4 cv_num_exp_test_raw_tm and
+    cv_num_exp_test_raw_hi =
+      Cv_compute_num_exp.cv_num_exp_hi 4 cv_num_exp_test_raw_tm;;
+
 if hyp cv_num_exp_test_lo <> [] || hyp cv_num_exp_test_hi <> [] then
   failwith "reflected num_exp bound has assumptions";;
 
 if rand (concl cv_num_exp_test_lo) <> cv_num_exp_test_tm ||
    lhand (concl cv_num_exp_test_hi) <> cv_num_exp_test_tm then
   failwith "reflected num_exp theorem interface mismatch";;
+
+if hyp cv_num_exp_test_raw_lo <> [] || hyp cv_num_exp_test_raw_hi <> [] then
+  failwith "raw reflected num_exp bound has assumptions";;
+
+if rand (concl cv_num_exp_test_raw_lo) <> cv_num_exp_test_raw_tm ||
+   lhand (concl cv_num_exp_test_raw_hi) <> cv_num_exp_test_raw_tm then
+  failwith "raw reflected num_exp theorem interface mismatch";;
+
+let cv_num_exp_test_raw_lo_n,_ =
+  Cv_compute_num_exp.cv_dest_num_exp (lhand (concl cv_num_exp_test_raw_lo)) and
+    cv_num_exp_test_raw_hi_n,_ =
+      Cv_compute_num_exp.cv_dest_num_exp (rand (concl cv_num_exp_test_raw_hi));;
+
+if Cv_compute_num_exp.cv_is_wrapped_numeral cv_num_exp_test_raw_lo_n ||
+   Cv_compute_num_exp.cv_is_wrapped_numeral cv_num_exp_test_raw_hi_n then
+  failwith "raw reflected num_exp result was unexpectedly wrapped";;
 
 print_endline "CANDLE_CV_NUM_EXP_OK";;

@@ -35,6 +35,27 @@ let cv_dest_cval_num tm =
   else
     n_tm;;
 
+let cv_is_wrapped_numeral tm =
+  is_comb tm && rator tm = Arith_num.num_const;;
+
+(* Arith_float keeps mantissas as raw radix digit spines internally, but its
+   public numeral conversions use NUM<base> wrappers.  Relate either form to
+   an ordinary HOL numeral with the exported NUM_THM identity theorem. *)
+let cv_hash_to_numeral tm =
+  if cv_is_wrapped_numeral tm then
+    Arith_num.NUM_TO_NUMERAL_CONV tm
+  else
+    let wrapped = mk_comb (Arith_num.num_const,tm) in
+    TRANS
+      (SYM (INST[tm,`n:num`] Arith_num.NUM_THM))
+      (Arith_num.NUM_TO_NUMERAL_CONV wrapped);;
+
+let cv_numeral_to_hash wrapped tm =
+  let th = Arith_num.NUMERAL_TO_NUM_CONV tm in
+  if wrapped then th else
+    let raw = rand (rand (concl th)) in
+    TRANS th (INST[raw,`n:num`] Arith_num.NUM_THM);;
+
 let cv_round_fuel n =
   let count = String.length (string_of_num n) + 2 in
   mk_list (replicate `0` count,`:num`);;
@@ -42,8 +63,10 @@ let cv_round_fuel n =
 let cv_num_exp_round direction p tm =
   if p <= 0 then failwith "cv_num_exp_round: nonpositive precision" else
   let n_hash,e_hash = cv_dest_num_exp tm in
-  let n_to_numeral = Arith_num.NUM_TO_NUMERAL_CONV n_hash and
-      e_to_numeral = Arith_num.NUM_TO_NUMERAL_CONV e_hash in
+  let n_wrapped = cv_is_wrapped_numeral n_hash and
+      e_wrapped = cv_is_wrapped_numeral e_hash in
+  let n_to_numeral = cv_hash_to_numeral n_hash and
+      e_to_numeral = cv_hash_to_numeral e_hash in
   let n_tm = rand (concl n_to_numeral) and
       e_tm = rand (concl e_to_numeral) in
   let n = dest_numeral n_tm in
@@ -100,8 +123,8 @@ let cv_num_exp_round direction p tm =
     REWRITE_RULE[round_result; FST; SND] sound in
   let num_exp_sound =
     PURE_REWRITE_RULE[GSYM Num_exp_theory.num_exp] sound in
-  let n_result_hash = Arith_num.NUMERAL_TO_NUM_CONV n_result and
-      e_result_hash = Arith_num.NUMERAL_TO_NUM_CONV e_result in
+  let n_result_hash = cv_numeral_to_hash n_wrapped n_result and
+      e_result_hash = cv_numeral_to_hash e_wrapped e_result in
   PURE_REWRITE_RULE
     [n_result_hash; e_result_hash;
      GSYM n_to_numeral; GSYM e_to_numeral]
