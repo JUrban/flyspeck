@@ -1,0 +1,46 @@
+needs "arith/cv_compute_m_taylor_bounds.hl";;
+needs "verifier/m_verifier_build.hl";;
+
+open Arith_float;;
+open M_taylor;;
+open M_verifier;;
+open M_verifier_build;;
+open Cv_compute_m_taylor_bounds;;
+
+let cv_m_taylor_test_x =
+  mk_list ([mk_float 1 0;mk_float 1 0],`:real`);;
+let cv_m_taylor_test_z =
+  mk_list ([mk_float 350 (-1);mk_float 350 (-1)],`:real`);;
+let cv_m_taylor_test_domain =
+  mk_m_center_domain 2 5 cv_m_taylor_test_x cv_m_taylor_test_z;;
+let cv_m_taylor_test_functions,_ =
+  mk_verification_functions_poly 5 `\x:real^2. x$1 - &10`;;
+let cv_m_taylor_test_interval =
+  cv_m_taylor_test_functions.taylor 5 5 cv_m_taylor_test_domain;;
+
+let cv_m_taylor_test_legacy_upper =
+  eval_m_taylor_upper_bound 2 5 cv_m_taylor_test_interval;;
+let cv_m_taylor_test_staged_upper =
+  cv_eval_m_taylor_upper_bound 2 5 cv_m_taylor_test_interval;;
+
+let cv_m_taylor_test_signature th =
+  let body = (snd o dest_forall o concl) th in
+  let domain_hyp,bound = dest_imp body in
+  domain_hyp,lhand bound;;
+
+if hyp cv_m_taylor_test_staged_upper <> [] ||
+   cv_m_taylor_test_signature cv_m_taylor_test_staged_upper <>
+     cv_m_taylor_test_signature cv_m_taylor_test_legacy_upper then
+  failwith "staged M_taylor upper theorem interface mismatch";;
+
+let cv_m_taylor_test_legacy_pass =
+  m_taylor_cell_pass 2 5 cv_m_taylor_test_interval;;
+let cv_m_taylor_test_staged_pass =
+  cv_m_taylor_cell_pass 2 5 cv_m_taylor_test_interval;;
+
+if hyp cv_m_taylor_test_staged_pass <> [] ||
+   concl cv_m_taylor_test_staged_pass <>
+     concl cv_m_taylor_test_legacy_pass then
+  failwith "staged M_taylor cell-pass theorem mismatch";;
+
+print_endline "CANDLE_CV_M_TAYLOR_BOUNDS_OK";;
