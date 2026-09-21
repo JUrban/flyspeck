@@ -1,0 +1,48 @@
+needs "arith/cv_compute_m_split_partition.hl";;
+
+open M_verifier;;
+open Candle_cv_split_partition_composition;;
+open Cv_compute_m_split_partition;;
+
+let cv_m_split_test_tree =
+ `Candle_split_partition_node 1 #0.5
+    Candle_split_partition_leaf Candle_split_partition_leaf`;;
+
+let cv_m_split_test_domain =
+ `((vec 0:real^1),vec 1)`;;
+
+let cv_m_split_test_function =
+ `(\x:real^1. -- &1)`;;
+
+let cv_m_split_test_well_formed = prove
+ (`candle_split_partition_well_formed (dimindex (:1))
+     (Candle_split_partition_node 1 #0.5
+       Candle_split_partition_leaf Candle_split_partition_leaf)`,
+  REWRITE_TAC[candle_split_partition_well_formed_def;DIMINDEX_1] THEN
+  ARITH_TAC);;
+
+let cv_m_split_test_holds = prove
+ (`candle_split_partition_holds
+     (\domain. m_cell_pass (\x:real^1. -- &1) domain)
+     cv_m_split_left cv_m_split_right ((vec 0:real^1),vec 1)
+     (Candle_split_partition_node 1 #0.5
+       Candle_split_partition_leaf Candle_split_partition_leaf)`,
+  REWRITE_TAC[candle_split_partition_holds_def;m_cell_pass] THEN
+  REAL_ARITH_TAC);;
+
+let cv_m_split_test_result =
+  let sound =
+    ISPECL
+      [cv_m_split_test_function;cv_m_split_test_tree;
+       cv_m_split_test_domain]
+      cv_m_split_composition_sound in
+  MATCH_MP sound
+    (CONJ cv_m_split_test_well_formed cv_m_split_test_holds);;
+
+if hyp cv_m_split_test_result <> [] ||
+   not
+     (aconv (concl cv_m_split_test_result)
+       `m_cell_pass (\x:real^1. -- &1) ((vec 0:real^1),vec 1)`)
+then failwith "M_verifier split composition theorem interface mismatch";;
+
+print_endline "CANDLE_CV_M_SPLIT_PARTITION_OK";;

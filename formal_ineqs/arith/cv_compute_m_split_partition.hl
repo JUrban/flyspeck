@@ -1,0 +1,97 @@
+(* ======================================================================== *)
+(* Proof-producing split-tree composition for M_verifier pass/glue trees.  *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE.  This first adapter deliberately supports    *)
+(* only ordinary split nodes.  Certificate references, monotonicity, raw    *)
+(* leaves, and convex glue remain unsupported and must fail closed in the   *)
+(* eventual ML reconstructor.                                                *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_split_partition_composition.ml";;
+
+module Cv_compute_m_split_partition = struct
+
+open Candle_cv_split_partition_composition;;
+open M_verifier;;
+
+let cv_m_split_left_def = new_definition
+ `cv_m_split_left j t (domain:real^N#real^N) =
+    (FST domain,
+     (lambda i. if i = j then t else (SND domain)$i):real^N)`;;
+
+let cv_m_split_right_def = new_definition
+ `cv_m_split_right j t (domain:real^N#real^N) =
+    ((lambda i. if i = j then t else (FST domain)$i):real^N,
+     SND domain)`;;
+
+let cv_m_split_glue_conj = prove
+ (`!j (x:real^N) z v u f.
+     ((!i. 1 <= i /\ i <= dimindex (:N) ==> ~(i = j) ==>
+          u$i = x$i /\ v$i = z$i) /\
+      v$j = u$j /\
+      m_cell_pass f (x,v) /\
+      m_cell_pass f (u,z))
+     ==> m_cell_pass f (x,z)`,
+  MESON_TAC[M_CELL_PASS_GLUE_LEMMA]);;
+
+(* MATCH_MP_TAC cannot infer the split coordinate or the two intermediate
+   endpoints from the conclusion of M_CELL_PASS_GLUE_LEMMA.  Recover those
+   exact terms from the already-proved child-domain assumptions.  In
+   particular, construct no new vector terms here: doing so would invent a
+   fresh finite-index type instead of preserving the goal's type identity. *)
+let cv_m_split_witnesses_tac (asl,w) =
+  let pass_domain (_,th) =
+    let h,args = strip_comb (concl th) in
+    if is_const h && fst(dest_const h) = "m_cell_pass" && length args = 2
+    then dest_pair (hd(tl args))
+    else failwith "cv_m_split_witnesses_tac: not m_cell_pass" in
+  let is_vector_lambda tm = is_comb tm && is_abs (rand tm) in
+  let domains = mapfilter pass_domain asl in
+  let _,v = find (fun (_,b) -> is_vector_lambda b) domains in
+  let u,_ = find (fun (a,_) -> is_vector_lambda a) domains in
+  let i,bod = dest_abs (rand v) in
+  let c,_ = dest_cond bod in
+  let a,b = dest_eq c in
+  let j =
+    if a = i then b else if b = i then a
+    else failwith "cv_m_split_witnesses_tac: split index" in
+  (MAP_EVERY EXISTS_TAC [j;v;u] THEN ASM_SIMP_TAC[LAMBDA_BETA]) (asl,w);;
+
+let cv_m_split_closure = prove
+ (`!j t (x:real^N) z f.
+     1 <= j /\ j <= dimindex (:N) ==>
+     m_cell_pass f (cv_m_split_left j t (x,z)) /\
+     m_cell_pass f (cv_m_split_right j t (x,z))
+     ==> m_cell_pass f (x,z)`,
+  REWRITE_TAC[cv_m_split_left_def;cv_m_split_right_def;FST;SND] THEN
+  REPEAT STRIP_TAC THEN
+  MATCH_MP_TAC cv_m_split_glue_conj THEN
+  cv_m_split_witnesses_tac);;
+
+let cv_m_split_closure_pair = prove
+ (`!j t (domain:real^N#real^N) f.
+     1 <= j /\ j <= dimindex (:N) ==>
+     m_cell_pass f (cv_m_split_left j t domain) /\
+     m_cell_pass f (cv_m_split_right j t domain)
+     ==> m_cell_pass f domain`,
+  REPEAT GEN_TAC THEN
+  MP_TAC (ISPEC `domain:real^N#real^N` PAIR_SURJECTIVE) THEN
+  DISCH_THEN
+    (X_CHOOSE_THEN `x:real^N`
+      (X_CHOOSE_THEN `z:real^N` SUBST1_TAC)) THEN
+  MESON_TAC[cv_m_split_closure]);;
+
+let cv_m_split_composition_sound = prove
+ (`!f candle_m_split_tree (candle_m_domain:real^N#real^N).
+     candle_split_partition_well_formed (dimindex (:N))
+       candle_m_split_tree /\
+     candle_split_partition_holds
+       (\domain. m_cell_pass f domain)
+       cv_m_split_left cv_m_split_right candle_m_domain
+       candle_m_split_tree
+     ==> m_cell_pass f candle_m_domain`,
+  MESON_TAC
+    [candle_split_partition_composition_sound_well_formed;
+     cv_m_split_closure_pair]);;
+
+end;;
