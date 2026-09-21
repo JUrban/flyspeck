@@ -99,7 +99,8 @@ partition on (xleft,zleft). So changing the side exchanges right and left all th
 let rec string_of_iargs = function 
   | Iarg_leaf msec -> "\n Iarg_leaf " ^ string_of_int msec
   | Iarg_facet ((i,b),frac,msec,a) ->
-      "\n Iarg_facet ((" ^ string_of_int i ^ "," ^ string_of_bool b ^
+      "\n Iarg_facet ((" ^ string_of_int i ^ "," ^
+      (if b then "true" else "false") ^
       ")," ^ string_of_float frac ^ "," ^ string_of_int msec ^ "," ^
       string_of_iargs a ^ ")"
   | Iarg_bisect(idx,a,b) ->
