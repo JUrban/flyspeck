@@ -48,7 +48,8 @@ let assume_the_nonlinear_inequalities =
 
 let check_nonlinear_md5 = 
   Serialization.simple_digest_thm assume_the_nonlinear_inequalities = 
-  "1f054717131cf915bd8cc95ab7b645c3";;
+  "1f054717131cf915bd8cc95ab7b645c3" ||
+  failwith "the_nonlinear_inequalities surface digest mismatch";;
 
 (* ********************************************************************** *)
 (* relate `nonlinear` to `the_nonlinear_inequalities` *)
@@ -334,6 +335,10 @@ let exec() =
 
 let exec_results = exec();;
 
+let _ =
+  filter (fun (_,t) -> t = TRUTH) exec_results = [] ||
+  failwith "failed nonlinear implication reconstruction";;
+
 let prepared_nonlinear_imp_nonlinear = 
   let inn = map (fun (_,x) -> UNDISCH x) exec_results in
   let ineq_nn = end_itlist (CONJ) inn in
@@ -364,6 +369,10 @@ let prep_nonlinear_thml  =
 let _ = 
   filter  (fun (_,t) -> t = TRUTH) prep_nonlinear_thml = [] ||
    failwith "failed prep cases";;
+
+let _ =
+  !Break_case_exec.candle_nonlinear_iarg_leaf_visits = 7479 ||
+  failwith "nonlinear serialized leaf coverage mismatch";;
 
 let prep_thms = map (fun s -> assoc s prep_nonlinear_thml) 
   (map (fun t -> t.idv) !Prep.prep_ineqs);;
@@ -412,6 +421,7 @@ val the_nonlinear_inequalities : thm = |- the_nonlinear_inequalities
 let check_the_nonlinear_inequalities_md5 = 
   Serialization.simple_digest_thm 
     (Serialization.canonize_thm the_nonlinear_inequalities) = 
-  "e607b9e5e7f4c495236c6546d6889963";;
+  "e607b9e5e7f4c495236c6546d6889963" ||
+  failwith "the_nonlinear_inequalities theorem digest mismatch";;
 
  end;;
