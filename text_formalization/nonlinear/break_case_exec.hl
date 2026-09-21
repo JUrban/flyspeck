@@ -1646,7 +1646,8 @@ let all_idv =     (oxl_idv @ delta_idv @ alpha_idv @ beta_idv @ gamma_idv);;
 
 let all_parameters = List.flatten (map idv_parameters all_idv);;
 
-List.length all_parameters = 23242;;
+List.length all_parameters = 23242 ||
+  failwith "nonlinear all_parameters count mismatch";;
 
 let check_tac s gl = 
   let (_,w) = dest_goal gl in
@@ -1690,6 +1691,8 @@ let (prove,
 (* ********************************************************************** *)
 
 
+let candle_nonlinear_iarg_leaf_visits = ref 0;;
+
 let rec prove_iargs tm = 
   let (_,[x;d;f]) = strip_comb tm in
     function
@@ -1699,7 +1702,10 @@ let rec prove_iargs tm =
 	  let i' = mk_small_numeral i in
 	  let thm =   UNDISCH_ALL (SPECL [d;i';x;f] bisect_thm) in
 	    PROVE_HYP thm_v (PROVE_HYP thm_u thm)
-      | Iarg_leaf _ -> ASSUME tm
+      | Iarg_leaf _ ->
+          let _ = candle_nonlinear_iarg_leaf_visits :=
+            !candle_nonlinear_iarg_leaf_visits + 1 in
+            ASSUME tm
       | Iarg_facet ((i,false),r,_,v) ->
 	  let thm_v = prove_iargs (mk_ineqm x (mk_frac_right i r d) f) v in
 	  let i' = mk_small_numeral i in
