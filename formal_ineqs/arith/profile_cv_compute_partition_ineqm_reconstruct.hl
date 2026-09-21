@@ -43,28 +43,94 @@ let cv_partition_reconstruct_profile_samples =
    "median",List.nth cv_partition_reconstruct_profile_ordered 231;
    "heavy",List.nth cv_partition_reconstruct_profile_ordered 462];;
 
+let cv_partition_reconstruct_profile_baseline_from_leaves
+      target tree leaf_theorems =
+  let propositions = mk_case_list target tree in
+  let _ =
+    List.length propositions = List.length leaf_theorems ||
+      failwith "preauthenticated leaf cardinality mismatch" in
+  let _ =
+    forall2
+      (fun proposition theorem -> aconv proposition (concl theorem))
+      propositions leaf_theorems ||
+      failwith "preauthenticated leaf conclusion mismatch" in
+  let assumptions = prove_iargs_cases target tree in
+  let discharged = itlist PROVE_HYP leaf_theorems assumptions in
+    REWRITE_RULE
+      [LENGTH;LENGTH_bisect_left;LENGTH_bisect_right;
+       LENGTH_frac_left;LENGTH_frac_right]
+      (DISCH_ALL discharged);;
+
 let cv_partition_reconstruct_profile_one label (identifier,tree) =
   let target = get_ineq identifier in
   let expected_cases = cv_partition_reconstruct_profile_cases tree in
   let expected_nodes = cv_partition_reconstruct_profile_nodes tree in
-  let baseline_start =
+  let _ = Hashtbl.clear Serialization.hash2 in
+  let cold_baseline_start =
     cv_partition_reconstruct_profile_process_cpu_ticks () in
-  let baseline = prove_serialize_processed_idq target tree in
-  let baseline_ticks =
-    cv_partition_reconstruct_profile_process_cpu_ticks () - baseline_start in
-  let reflected_leaf_count = ref 0 in
-  let reflected_leaf proposition =
-    let _ = reflected_leaf_count := !reflected_leaf_count + 1 in
-    Serialization.mk_ser_thm proposition in
-  let reflected_start =
+  let cold_baseline = prove_serialize_processed_idq target tree in
+  let cold_baseline_ticks =
+    cv_partition_reconstruct_profile_process_cpu_ticks () -
+    cold_baseline_start in
+  let _ = Hashtbl.clear Serialization.hash2 in
+  let cold_partition_leaf_count = ref 0 in
+  let cold_partition_leaf proposition =
+    let _ =
+      cold_partition_leaf_count := !cold_partition_leaf_count + 1 in
+      Serialization.mk_ser_thm proposition in
+  let cold_partition_start =
     cv_partition_reconstruct_profile_process_cpu_ticks () in
-  let reflected =
-    cv_partition_ineqm_reconstruct_cases reflected_leaf target tree in
-  let reflected_ticks =
-    cv_partition_reconstruct_profile_process_cpu_ticks () - reflected_start in
-  if !reflected_leaf_count <> expected_cases ||
-     hyp baseline <> [] || hyp reflected <> [] ||
-     not (aconv (concl baseline) (concl reflected))
+  let cold_partition =
+    cv_partition_ineqm_reconstruct_cases cold_partition_leaf target tree in
+  let cold_partition_ticks =
+    cv_partition_reconstruct_profile_process_cpu_ticks () -
+    cold_partition_start in
+  let _ = Hashtbl.clear Serialization.hash2 in
+  let authentication_start =
+    cv_partition_reconstruct_profile_process_cpu_ticks () in
+  let leaf_theorems =
+    map Serialization.mk_ser_thm (mk_case_list target tree) in
+  let authentication_ticks =
+    cv_partition_reconstruct_profile_process_cpu_ticks () -
+    authentication_start in
+  let baseline_glue_start =
+    cv_partition_reconstruct_profile_process_cpu_ticks () in
+  let baseline_glue =
+    cv_partition_reconstruct_profile_baseline_from_leaves
+      target tree leaf_theorems in
+  let baseline_glue_ticks =
+    cv_partition_reconstruct_profile_process_cpu_ticks () -
+    baseline_glue_start in
+  let index_start = cv_partition_reconstruct_profile_process_cpu_ticks () in
+  let leaf_index : (term,thm) Hashtbl.t =
+    Hashtbl.create expected_cases in
+  let _ =
+    map
+      (fun theorem -> Hashtbl.add leaf_index (concl theorem) theorem)
+      leaf_theorems in
+  let index_ticks =
+    cv_partition_reconstruct_profile_process_cpu_ticks () - index_start in
+  let partition_glue_leaf_count = ref 0 in
+  let partition_glue_leaf proposition =
+    let _ =
+      partition_glue_leaf_count := !partition_glue_leaf_count + 1 in
+      try Hashtbl.find leaf_index proposition
+      with Not_found -> failwith "preauthenticated partition leaf missing" in
+  let partition_glue_start =
+    cv_partition_reconstruct_profile_process_cpu_ticks () in
+  let partition_glue =
+    cv_partition_ineqm_reconstruct_cases
+      partition_glue_leaf target tree in
+  let partition_glue_ticks =
+    cv_partition_reconstruct_profile_process_cpu_ticks () -
+    partition_glue_start in
+  if !cold_partition_leaf_count <> expected_cases ||
+     !partition_glue_leaf_count <> expected_cases ||
+     hyp cold_baseline <> [] || hyp cold_partition <> [] ||
+     hyp baseline_glue <> [] || hyp partition_glue <> [] ||
+     not (aconv (concl cold_baseline) (concl cold_partition)) ||
+     not (aconv (concl cold_baseline) (concl baseline_glue)) ||
+     not (aconv (concl cold_baseline) (concl partition_glue))
   then failwith ("partition reconstruction mismatch: " ^ identifier);
   print_endline
     ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^ "_ID=" ^ identifier);
@@ -75,17 +141,31 @@ let cv_partition_reconstruct_profile_one label (identifier,tree) =
     ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^ "_NODES=" ^
      string_of_int expected_nodes);
   print_endline
-    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^ "_BASELINE_TICKS=" ^
-     string_of_int baseline_ticks);
+    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^
+     "_COLD_BASELINE_TICKS=" ^ string_of_int cold_baseline_ticks);
   print_endline
-    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^ "_REFLECTED_TICKS=" ^
-     string_of_int reflected_ticks);
-  baseline_ticks,reflected_ticks;;
+    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^
+     "_COLD_PARTITION_TICKS=" ^ string_of_int cold_partition_ticks);
+  print_endline
+    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^
+     "_AUTHENTICATION_TICKS=" ^ string_of_int authentication_ticks);
+  print_endline
+    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^
+     "_BASELINE_GLUE_TICKS=" ^ string_of_int baseline_glue_ticks);
+  print_endline
+    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^
+     "_PARTITION_INDEX_TICKS=" ^ string_of_int index_ticks);
+  print_endline
+    ("CANDLE_CV_PARTITION_RECONSTRUCT_" ^ label ^
+     "_PARTITION_GLUE_TICKS=" ^ string_of_int partition_glue_ticks);
+  (cold_baseline_ticks,cold_partition_ticks,authentication_ticks,
+   baseline_glue_ticks,index_ticks,partition_glue_ticks);;
 
 let cv_partition_reconstruct_profile_backup =
   !Serialization.use_serialization;;
 let _ = Serialization.use_serialization := true;;
 let _ = Serialization.deserialization_axiom ();;
+let cv_partition_reconstruct_profile_axioms = axioms ();;
 let cv_partition_reconstruct_profile_results =
   try
     let results =
@@ -102,5 +182,8 @@ let cv_partition_reconstruct_profile_results =
       Serialization.use_serialization :=
         cv_partition_reconstruct_profile_backup in
     raise error;;
+
+if not (set_eq (axioms ()) cv_partition_reconstruct_profile_axioms)
+then failwith "partition profile changed the global axiom set";;
 
 print_endline "CANDLE_CV_PARTITION_RECONSTRUCT_OK";;
