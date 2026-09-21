@@ -927,12 +927,12 @@ let odom_table =
       (odom10,Merge_ineq.delta_min_corner_4_799_8_alt);
     ];;
 
-let check_odom = setify (map (fun ((a,b),t) -> 
+let check_odom = Lib.setify (map (fun ((a,b),t) ->
        let rr = GSYM (REWRITE_RULE[IMP_IMP_THM;GSYM CONJ_ASSOC] Nonlinear_lemma.ineq_expand6) in
        let t' = REWRITE_RULE[rr] t in
        let diff x y = map2 (-.) x y in
        let (c,d) = ocaml_domain (concl t') in
-	 setify(diff a c),setify(diff b d)) odom_table);;
+	 Lib.setify(diff a c),Lib.setify(diff b d)) odom_table);;
 
 check_odom = [([0.],[0.])];;
 
@@ -982,7 +982,7 @@ let oxl_idv,alpha_idv,beta_idv,gamma_idv,delta_idv =
   let delta_pos_idv = 
     filter (is_delta_pos o get_ineq) reduced_prep_idv in
   let delta_inert_idv =   filter (is_delta_inert o get_ineq) reduced_prep_idv in
-  let delta_idv = setify (delta_pos_idv @ delta_inert_idv) in
+  let delta_idv = Lib.setify (delta_pos_idv @ delta_inert_idv) in
   let delta_nok_idv = subtract (reduced_prep_idv) delta_idv in
   let beta_idv = delta_nok_idv @ ["prep-2314572187"; "prep-7550003505 0 0 2"; "prep-7550003505 0 1 2";
    "prep-7550003505 0 2 2"; "prep-7550003505 0 2 3"; "prep-7550003505 0 2 4";
@@ -998,7 +998,8 @@ let oxl_idv,alpha_idv,beta_idv,gamma_idv,delta_idv =
    "prep-IXPOTPA split(0/2)"] in
   let alpha_idv = subtract tough_idv (beta_idv @ gamma_idv) in
   let _ = assert_test 
-    (setify all_idv = setify (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv)) 
+    (Lib.setify all_idv =
+     Lib.setify (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv))
     "idv partition" in
     (oxl_idv,alpha_idv,beta_idv,gamma_idv,delta_idv);;
 
@@ -1200,7 +1201,8 @@ assert_test (test_delta_cases = [])  "delta_cases";;
 (*
 let bad_names t = 
   let t' = concl (REWRITE_RULE nonlin_rewrites (ASSUME t)) in
-  filter (fun c -> not(mem c good_names)) (setify ( (get_const_names t')));;
+  filter (fun c -> not(mem c good_names))
+    (Lib.setify (get_const_names t'));;
 *)
 
 
@@ -1418,7 +1420,8 @@ let POST_TAC =   ASM_TAC THEN REWRITE_TAC[GSYM Nonlinear_lemma.ineq_expand6];;
 
 let bad_names t = 
   let t' = concl (REWRITE_RULE nonlin_rewrites (ASSUME t)) in
-  filter (fun c -> not(mem c good_names)) (setify ( (get_const_names t')));;
+  filter (fun c -> not(mem c good_names))
+    (Lib.setify (get_const_names t'));;
 
 let data_of_run f s = 
   let w = f s in
@@ -1768,7 +1771,8 @@ let test_prep s =
       (prove_serialized_idv s; true)
     with Failure _ -> (report ("fail "^s); false);;
 
-let all_idv = setify (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv);;
+let all_idv =
+  Lib.setify (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv);;
 
 
 
