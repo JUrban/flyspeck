@@ -1,0 +1,137 @@
+(* DEVELOPMENT / NON-RELEASE arithmetic-only profile.  This is one exact
+   numerical expression from the archived native theorem for
+   prep-4680581274 delta issue-cayleyR,0: the upper endpoint
+   2.0 * 1.26 * 2.0 * 1.26 = 6.3504.  It is a real certificate-domain
+   calculation, not a substitute for the still-queued complete leaf. *)
+
+needs "arith/cv_compute_float_staged_polynomial.hl";;
+
+open Cv_compute_float_staged_polynomial;;
+
+let cv_real_nl_endpoint_process_cpu_seconds () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  float_of_int
+    (int_of_string (List.nth fields 13) +
+     int_of_string (List.nth fields 14)) /. 100.0;;
+
+let cv_real_nl_endpoint_profiles :
+    cv_staged_polynomial_profile list ref = ref [];;
+let _ =
+  cv_staged_polynomial_profile_clock :=
+    cv_real_nl_endpoint_process_cpu_seconds;
+  cv_staged_polynomial_profile_sink :=
+    Some
+      (fun profile ->
+        cv_real_nl_endpoint_profiles :=
+          profile :: !cv_real_nl_endpoint_profiles);;
+
+let cv_real_nl_endpoint_source_factors =
+  [`#2.0`; `#1.26`; `#2.0`; `#1.26`];;
+let cv_real_nl_endpoint_float_factors =
+  [Arith_float.mk_float 2 0; Arith_float.mk_float 252 (-1);
+   Arith_float.mk_float 2 0; Arith_float.mk_float 252 (-1)];;
+
+let cv_real_nl_endpoint_bridge source_tm float_tm =
+  let source_eq = REAL_RAT_REDUCE_CONV source_tm and
+      float_eq = Arith_float.FLOAT_TO_NUM_CONV float_tm in
+  let middle_eq =
+    EQT_ELIM
+      (REAL_RAT_REDUCE_CONV
+        (mk_eq (rand (concl source_eq),rand (concl float_eq)))) in
+  TRANS source_eq (TRANS middle_eq (SYM float_eq));;
+
+let cv_real_nl_endpoint_total_started =
+  cv_real_nl_endpoint_process_cpu_seconds ();;
+let cv_real_nl_endpoint_representation_started =
+  cv_real_nl_endpoint_process_cpu_seconds ();;
+let cv_real_nl_endpoint_bridges =
+  map2 cv_real_nl_endpoint_bridge
+    cv_real_nl_endpoint_source_factors cv_real_nl_endpoint_float_factors;;
+let cv_real_nl_endpoint_representation_finished =
+  cv_real_nl_endpoint_process_cpu_seconds ();;
+let cv_real_nl_endpoint_raw_theorem =
+  try
+    let raw_theorem =
+      cv_float_staged_product_sum_hi 8
+        [cv_real_nl_endpoint_float_factors] in
+    cv_staged_polynomial_profile_sink := None;
+    cv_staged_polynomial_profile_clock := Unix.gettimeofday;
+    raw_theorem
+  with failure ->
+    (cv_staged_polynomial_profile_sink := None;
+     cv_staged_polynomial_profile_clock := Unix.gettimeofday;
+     raise failure);;
+let cv_real_nl_endpoint_source_handoff_started =
+  cv_real_nl_endpoint_process_cpu_seconds ();;
+let cv_real_nl_endpoint_theorem =
+  REWRITE_RULE [REAL_ADD_RID]
+    (PURE_REWRITE_RULE (map SYM cv_real_nl_endpoint_bridges)
+      cv_real_nl_endpoint_raw_theorem);;
+let cv_real_nl_endpoint_source_handoff_finished =
+  cv_real_nl_endpoint_process_cpu_seconds ();;
+let cv_real_nl_endpoint_total_seconds =
+  cv_real_nl_endpoint_process_cpu_seconds () -.
+  cv_real_nl_endpoint_total_started;;
+let cv_real_nl_endpoint_representation_seconds =
+  cv_real_nl_endpoint_representation_finished -.
+  cv_real_nl_endpoint_representation_started;;
+let cv_real_nl_endpoint_source_handoff_seconds =
+  cv_real_nl_endpoint_source_handoff_finished -.
+  cv_real_nl_endpoint_source_handoff_started;;
+
+if hyp cv_real_nl_endpoint_theorem <> [] then
+  failwith "real NL endpoint theorem has assumptions";;
+if lhand (concl cv_real_nl_endpoint_theorem) <>
+     cv_staged_real_product cv_real_nl_endpoint_source_factors then
+  failwith "real NL endpoint theorem interface mismatch";;
+if length !cv_real_nl_endpoint_profiles <> 1 then
+  failwith "real NL endpoint expected one numerical evaluation";;
+
+let cv_real_nl_endpoint_profile = hd !cv_real_nl_endpoint_profiles;;
+let cv_real_nl_endpoint_accounted_seconds =
+  cv_real_nl_endpoint_profile.source_plan_seconds +.
+  cv_real_nl_endpoint_profile.precompute_proof_seconds +.
+  cv_real_nl_endpoint_profile.kernel_compute_seconds +.
+  cv_real_nl_endpoint_profile.theorem_handoff_seconds;;
+let cv_real_nl_endpoint_outer_seconds =
+  cv_real_nl_endpoint_total_seconds -.
+  cv_real_nl_endpoint_accounted_seconds;;
+
+print_endline
+  ("CANDLE_CV_REAL_NL_ENDPOINT_PHASE" ^
+   " monomials=" ^
+     string_of_int cv_real_nl_endpoint_profile.input_monomials ^
+   " factors=" ^
+     string_of_int cv_real_nl_endpoint_profile.input_factors ^
+   " source_plan_seconds=" ^
+     string_of_float cv_real_nl_endpoint_profile.source_plan_seconds ^
+   " precompute_proof_seconds=" ^
+     string_of_float cv_real_nl_endpoint_profile.precompute_proof_seconds ^
+   " kernel_compute_seconds=" ^
+     string_of_float cv_real_nl_endpoint_profile.kernel_compute_seconds ^
+   " theorem_handoff_seconds=" ^
+     string_of_float cv_real_nl_endpoint_profile.theorem_handoff_seconds);;
+print_endline
+  ("CANDLE_CV_REAL_NL_ENDPOINT_TOTAL_SECONDS=" ^
+   string_of_float cv_real_nl_endpoint_total_seconds);;
+print_endline
+  ("CANDLE_CV_REAL_NL_ENDPOINT_REPRESENTATION_SECONDS=" ^
+   string_of_float cv_real_nl_endpoint_representation_seconds);;
+print_endline
+  ("CANDLE_CV_REAL_NL_ENDPOINT_SOURCE_HANDOFF_SECONDS=" ^
+   string_of_float cv_real_nl_endpoint_source_handoff_seconds);;
+print_endline
+  ("CANDLE_CV_REAL_NL_ENDPOINT_ACCOUNTED_SECONDS=" ^
+   string_of_float cv_real_nl_endpoint_accounted_seconds);;
+print_endline
+  ("CANDLE_CV_REAL_NL_ENDPOINT_OUTER_SECONDS=" ^
+   string_of_float cv_real_nl_endpoint_outer_seconds);;
+print_endline "CANDLE_CV_REAL_NL_ENDPOINT_THEOREM_BEGIN";;
+print_thm cv_real_nl_endpoint_theorem;;
+print_endline "CANDLE_CV_REAL_NL_ENDPOINT_THEOREM_END";;
+print_endline
+  "CANDLE_CV_REAL_NL_ENDPOINT_SOURCE=prep-4680581274_delta_issue-cayleyR_0";;
+print_endline "CANDLE_CV_REAL_NL_ENDPOINT_PROFILE_OK";;

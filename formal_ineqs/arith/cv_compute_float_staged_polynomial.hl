@@ -22,6 +22,30 @@ open Cv_compute_float_polynomial;;
 open Num_exp_theory;;
 open Float_theory;;
 
+(* Optional development-only phase timing.  The default disabled path reads
+   one ref but does not call the clock.  Keeping the hook at this layer lets a
+   real Taylor-leaf benchmark distinguish source decoding/host planning,
+   pre-compute proof reification, verified evaluator execution, and theorem
+   handoff without changing the theorem returned by the checker. *)
+type cv_staged_polynomial_profile = {
+  input_monomials : int;
+  input_factors : int;
+  source_plan_seconds : float;
+  precompute_proof_seconds : float;
+  kernel_compute_seconds : float;
+  theorem_handoff_seconds : float;
+};;
+
+let cv_staged_polynomial_profile_sink :
+    (cv_staged_polynomial_profile -> unit) option ref =
+  ref None;;
+
+(* Candle's Unix.gettimeofday compatibility stub returns zero.  Development
+   profiles may install a monotonic process clock; the checker never reads it
+   unless the profile sink is enabled. *)
+let cv_staged_polynomial_profile_clock : (unit -> float) ref =
+  ref Unix.gettimeofday;;
+
 let candle_nf_value_num_exp = prove
  (`!n e.
      candle_nf_value arith_base (n,e) = num_exp n e`,
@@ -242,6 +266,12 @@ let rec cv_staged_real_product factors =
         (cv_staged_real_product tail);;
 
 let cv_float_staged_product_sum_hi (p:int) monomials =
+  let profile_sink = !cv_staged_polynomial_profile_sink in
+  let profile_clock () =
+    match profile_sink with
+    | None -> 0.0
+    | Some _ -> (!cv_staged_polynomial_profile_clock) () in
+  let source_plan_started = profile_clock () in
   if p <= 0 then
     failwith "cv_float_staged_product_sum_hi: nonpositive precision"
   else if monomials = [] then
@@ -274,6 +304,7 @@ let cv_float_staged_product_sum_hi (p:int) monomials =
       map
         (cv_staged_product_plan base_num scale_num limit_num)
         numeric_monomials in
+    let source_plan_finished = profile_clock () in
     let product_steps = map fst product_plans and
         product_results = map snd product_plans in
     let product_evals =
@@ -361,8 +392,10 @@ let cv_float_staged_product_sum_hi (p:int) monomials =
           mk_comb (`Cexp_num`,limit_tm);
           rand (concl jobs_rep);
           rand (concl initial_acc_rep)]) in
+    let computation_started = profile_clock () in
     let computation =
       compute candle_cv_nf_staged_polynomial_compute_eqs expression in
+    let computation_finished = profile_clock () in
     let n_cval,e_cval = cv_dest_cval_pair (rand (concl computation)) in
     let n_result = cv_dest_cval_num n_cval and
         e_result = cv_dest_cval_num e_cval in
@@ -450,6 +483,23 @@ let cv_float_staged_product_sum_hi (p:int) monomials =
       cv_numeral_to_hash (cv_is_wrapped_numeral first_n_hash) n_result and
         e_result_hash =
           cv_numeral_to_hash (cv_is_wrapped_numeral first_e_hash) e_result in
-    PURE_REWRITE_RULE [n_result_hash;e_result_hash] final_bound;;
+    let result =
+      PURE_REWRITE_RULE [n_result_hash;e_result_hash] final_bound in
+    let handoff_finished = profile_clock () in
+    (match profile_sink with
+     | None -> ()
+     | Some sink ->
+         sink
+           {input_monomials = length monomials;
+            input_factors = itlist (+) (map length monomials) 0;
+            source_plan_seconds =
+              source_plan_finished -. source_plan_started;
+            precompute_proof_seconds =
+              computation_started -. source_plan_finished;
+            kernel_compute_seconds =
+              computation_finished -. computation_started;
+            theorem_handoff_seconds =
+              handoff_finished -. computation_finished});
+    result;;
 
 end;;

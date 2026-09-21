@@ -1,0 +1,105 @@
+(* DEVELOPMENT / NON-RELEASE arithmetic-only phase profile.  The numerical
+   workload is the authenticated Taylor fixture used by the staged-polynomial
+   proof tests.  It does not depend on the nonlinear verifier closure. *)
+
+needs "arith/test_cv_compute_float_staged_polynomial.hl";;
+
+open Cv_compute_float_staged_polynomial;;
+open Cv_compute_float_taylor;;
+
+let cv_staged_phase_process_cpu_seconds () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  float_of_int
+    (int_of_string (List.nth fields 13) +
+     int_of_string (List.nth fields 14)) /. 100.0;;
+
+let cv_staged_phase_profiles : cv_staged_polynomial_profile list ref = ref [];;
+let _ =
+  cv_staged_polynomial_profile_clock := cv_staged_phase_process_cpu_seconds;
+  cv_staged_polynomial_profile_sink :=
+    Some
+      (fun profile ->
+        cv_staged_phase_profiles := profile :: !cv_staged_phase_profiles);;
+
+let cv_staged_phase_started = cv_staged_phase_process_cpu_seconds ();;
+let cv_staged_phase_first,cv_staged_phase_second =
+  try
+    let first_iabs =
+      map cv_taylor_float_iabs cv_float_taylor_test_dfs in
+    let first_monomials =
+      map2
+        (fun w eq -> [w;rand (concl eq)])
+        cv_float_taylor_test_ws first_iabs in
+    let first_reflected =
+      cv_float_staged_product_sum_hi 8 first_monomials in
+    let first =
+      cv_taylor_transfer_bound first_iabs
+        (cv_taylor_first_lhs
+          cv_float_taylor_test_ws cv_float_taylor_test_dfs)
+        first_reflected in
+    let second_iabs,second_lhs,second_monomials =
+      Cv_compute_float_taylor_batch.cv_taylor_second_reflection
+        cv_float_taylor_test_ws cv_float_taylor_test_dds in
+    let second_reflected =
+      cv_float_staged_product_sum_hi 8 second_monomials in
+    let second =
+      cv_taylor_transfer_bound second_iabs second_lhs second_reflected in
+    cv_staged_polynomial_profile_sink := None;
+    cv_staged_polynomial_profile_clock := Unix.gettimeofday;
+    first,second
+  with failure ->
+    (cv_staged_polynomial_profile_sink := None;
+     cv_staged_polynomial_profile_clock := Unix.gettimeofday;
+     raise failure);;
+let cv_staged_phase_total_seconds =
+  cv_staged_phase_process_cpu_seconds () -. cv_staged_phase_started;;
+let cv_staged_phase_profiles = rev !cv_staged_phase_profiles;;
+
+if length cv_staged_phase_profiles <> 2 then
+  failwith "staged arithmetic profile expected two numerical evaluations";;
+if hyp cv_staged_phase_first <> [] || hyp cv_staged_phase_second <> [] then
+  failwith "staged arithmetic profile theorem has assumptions";;
+
+let cv_staged_phase_print role profile =
+  print_endline
+    ("CANDLE_CV_STAGED_PHASE role=" ^ role ^
+     " monomials=" ^ string_of_int profile.input_monomials ^
+     " factors=" ^ string_of_int profile.input_factors ^
+     " source_plan_seconds=" ^ string_of_float profile.source_plan_seconds ^
+     " precompute_proof_seconds=" ^
+       string_of_float profile.precompute_proof_seconds ^
+     " kernel_compute_seconds=" ^
+       string_of_float profile.kernel_compute_seconds ^
+     " theorem_handoff_seconds=" ^
+       string_of_float profile.theorem_handoff_seconds);;
+
+let cv_staged_phase_first_profile = List.nth cv_staged_phase_profiles 0 and
+    cv_staged_phase_second_profile = List.nth cv_staged_phase_profiles 1;;
+cv_staged_phase_print "first_derivative" cv_staged_phase_first_profile;;
+cv_staged_phase_print "second_derivative" cv_staged_phase_second_profile;;
+
+let cv_staged_phase_accounted_seconds =
+  itlist
+    (fun profile total ->
+      profile.source_plan_seconds +. profile.precompute_proof_seconds +.
+      profile.kernel_compute_seconds +. profile.theorem_handoff_seconds +.
+      total)
+    cv_staged_phase_profiles 0.0;;
+let cv_staged_phase_outer_seconds =
+  cv_staged_phase_total_seconds -. cv_staged_phase_accounted_seconds;;
+
+print_endline
+  ("CANDLE_CV_STAGED_PHASE_TOTAL_SECONDS=" ^
+   string_of_float cv_staged_phase_total_seconds);;
+print_endline
+  ("CANDLE_CV_STAGED_PHASE_ACCOUNTED_SECONDS=" ^
+   string_of_float cv_staged_phase_accounted_seconds);;
+print_endline
+  ("CANDLE_CV_STAGED_PHASE_OUTER_SECONDS=" ^
+   string_of_float cv_staged_phase_outer_seconds);;
+print_endline
+  "CANDLE_CV_STAGED_PHASE_REPRESENTATION radix_mantissa_exponent_pairs cval_program staged_upward_rounding";;
+print_endline "CANDLE_CV_STAGED_PHASE_PROFILE_OK";;
