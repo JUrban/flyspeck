@@ -26,6 +26,33 @@ module Break_case_exec = struct
 
   open Hales_tactic;;
 
+  (* Candle's current transitive-open behavior can expose the pre-repair
+     Hales_tactic copy of Lib.report. Restore the intended binding locally. *)
+  let candle_break_case_report s =
+    let candle_break_case_report_string = Format.print_string s in
+    let candle_break_case_report_newline = Format.print_newline () in
+      ();;
+
+  let candle_break_case_string_le x y = String.compare x y <= 0;;
+  let candle_break_case_float_compare (x:float) (y:float) =
+    let x_exponent = Cake.Word64.toInt (Cake.Double.exponent x) in
+    let y_exponent = Cake.Word64.toInt (Cake.Double.exponent y) in
+    let x_significand = Cake.Word64.toInt (Cake.Double.significand x) in
+    let y_significand = Cake.Word64.toInt (Cake.Double.significand y) in
+    if (x_exponent = 2047 && not (x_significand = 0)) ||
+       (y_exponent = 2047 && not (y_significand = 0))
+    then failwith "nonlinear setify encountered NaN"
+    else if Cake.Double.(<) x y then -1
+    else if Cake.Double.(>) x y then 1
+    else 0;;
+  let candle_break_case_float_le x y =
+    candle_break_case_float_compare x y <= 0;;
+  let candle_break_case_float_list_compare x y =
+    List.compare candle_break_case_float_compare x y;;
+  let candle_break_case_float_list_pair_le x y =
+    Pair.compare candle_break_case_float_list_compare
+      candle_break_case_float_list_compare x y <= 0;;
+
 (* PRELIMINARIES *)
 
   let assert_test p s = p || failwith s;;
@@ -927,19 +954,23 @@ let odom_table =
       (odom10,Merge_ineq.delta_min_corner_4_799_8_alt);
     ];;
 
-let check_odom = Lib.setify (map (fun ((a,b),t) ->
+let check_odom =
+  setify candle_break_case_float_list_pair_le (map (fun ((a,b),t) ->
        let rr = GSYM (REWRITE_RULE[IMP_IMP_THM;GSYM CONJ_ASSOC] Nonlinear_lemma.ineq_expand6) in
        let t' = REWRITE_RULE[rr] t in
        let diff x y = map2 (-.) x y in
        let (c,d) = ocaml_domain (concl t') in
-	 Lib.setify(diff a c),Lib.setify(diff b d)) odom_table);;
+	 setify candle_break_case_float_le (diff a c),
+         setify candle_break_case_float_le (diff b d)) odom_table);;
 
 check_odom = [([0.],[0.])];;
 
 let include_domain (a1,b1) (a2,b2) = 
   let eps = 1.0e-10 in
-    forall2 (fun x y -> x +. eps >= y) a1 a2 &&
-      forall2 (fun x y -> x <= y +. eps) b1 b2;;
+    forall2
+      (fun x y -> candle_break_case_float_le y (x +. eps)) a1 a2 &&
+      forall2
+        (fun x y -> candle_break_case_float_le x (y +. eps)) b1 b2;;
 
 let exists_domain t = 
   let (a,b) = (ocaml_domain t) in
@@ -982,7 +1013,8 @@ let oxl_idv,alpha_idv,beta_idv,gamma_idv,delta_idv =
   let delta_pos_idv = 
     filter (is_delta_pos o get_ineq) reduced_prep_idv in
   let delta_inert_idv =   filter (is_delta_inert o get_ineq) reduced_prep_idv in
-  let delta_idv = Lib.setify (delta_pos_idv @ delta_inert_idv) in
+  let delta_idv =
+    setify candle_break_case_string_le (delta_pos_idv @ delta_inert_idv) in
   let delta_nok_idv = subtract (reduced_prep_idv) delta_idv in
   let beta_idv = delta_nok_idv @ ["prep-2314572187"; "prep-7550003505 0 0 2"; "prep-7550003505 0 1 2";
    "prep-7550003505 0 2 2"; "prep-7550003505 0 2 3"; "prep-7550003505 0 2 4";
@@ -998,8 +1030,9 @@ let oxl_idv,alpha_idv,beta_idv,gamma_idv,delta_idv =
    "prep-IXPOTPA split(0/2)"] in
   let alpha_idv = subtract tough_idv (beta_idv @ gamma_idv) in
   let _ = assert_test 
-    (Lib.setify all_idv =
-     Lib.setify (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv))
+    (setify candle_break_case_string_le all_idv =
+     setify candle_break_case_string_le
+       (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv))
     "idv partition" in
     (oxl_idv,alpha_idv,beta_idv,gamma_idv,delta_idv);;
 
@@ -1202,7 +1235,7 @@ assert_test (test_delta_cases = [])  "delta_cases";;
 let bad_names t = 
   let t' = concl (REWRITE_RULE nonlin_rewrites (ASSUME t)) in
   filter (fun c -> not(mem c good_names))
-    (Lib.setify (get_const_names t'));;
+    (setify candle_break_case_string_le (get_const_names t'));;
 *)
 
 
@@ -1421,7 +1454,7 @@ let POST_TAC =   ASM_TAC THEN REWRITE_TAC[GSYM Nonlinear_lemma.ineq_expand6];;
 let bad_names t = 
   let t' = concl (REWRITE_RULE nonlin_rewrites (ASSUME t)) in
   filter (fun c -> not(mem c good_names))
-    (Lib.setify (get_const_names t'));;
+    (setify candle_break_case_string_le (get_const_names t'));;
 
 let data_of_run f s = 
   let w = f s in
@@ -1760,19 +1793,25 @@ let prove_serialized_idv s =
       (prove(gt, PREP_TAC s THEN SERIAL_TAC s));;
 
 let prove_prep s =
-  let _ = report s in
+  let candle_break_case_reported = candle_break_case_report s in
     try
       (s,prove_serialized_idv s)
-    with Failure m -> (report "FAIL"; (m^s,TRUTH));;
+    with Failure m ->
+      let candle_break_case_reported_failure =
+        candle_break_case_report "FAIL" in
+        ((m^s),TRUTH);;
 	
 let test_prep s = 
-  let _ = report s in
+  let candle_break_case_reported = candle_break_case_report s in
     try 
-      (prove_serialized_idv s; true)
-    with Failure _ -> (report ("fail "^s); false);;
+      let _ = prove_serialized_idv s in true
+    with Failure _ ->
+      let candle_break_case_reported_failure =
+        candle_break_case_report ("fail "^s) in false;;
 
 let all_idv =
-  Lib.setify (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv);;
+  setify candle_break_case_string_le
+    (oxl_idv @ alpha_idv @ beta_idv @ gamma_idv @ delta_idv);;
 
 
 

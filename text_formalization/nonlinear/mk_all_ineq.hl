@@ -42,6 +42,13 @@ module Mk_all_ineq = struct
   open Optimize;;
   open Hales_tactic;;
 
+  (* Keep the intended Lib.report semantics even when a transitive open
+     exposes the pre-repair Hales_tactic binding from a focused checkpoint. *)
+  let candle_mk_all_report s =
+    let candle_mk_all_report_string = Format.print_string s in
+    let candle_mk_all_report_newline = Format.print_newline () in
+      ();;
+
 let assume_the_nonlinear_inequalities = 
     Serialization.canonize_thm 
     (MESON[] `the_nonlinear_inequalities ==> the_nonlinear_inequalities`);;
@@ -77,7 +84,8 @@ let has_quad t = some_const_name (fun s -> mem s ["enclosed";"tauq"]) t;;
 
 let quad_enclosed = 
   let has_quad_idq = filter (fun idq -> has_quad idq.ineq) !Ineq.ineqs in
-    Lib.setify (map (fun idq -> idq.idv) has_quad_idq);;
+    setify (fun x y -> String.compare x y <= 0)
+      (map (fun idq -> idq.idv) has_quad_idq);;
     
 let disregard = quad_enclosed;;
 
@@ -210,7 +218,7 @@ let lp_ineqs_def =
   let lp_ineqs = filter (fun ineq -> 
 	not (mem ineq.idv Tame_lemmas.deprecated_quads) &&
 	(check_lp_tags ineq || mem ineq.idv ineq_ids)) !Ineq.ineqs in
-  let lp_tms = Lib.setify (map (fun t -> t.ineq) lp_ineqs) in
+  let lp_tms = setify Term.(<) (map (fun t -> t.ineq) lp_ineqs) in
   let lp_tm = end_itlist (curry mk_conj) lp_tms in
     new_definition (mk_eq (`lp_ineqs:bool`, lp_tm));;
 
@@ -294,7 +302,7 @@ let prove_ineq s =
   let PNONL = `prepared_nonlinear:bool` in
   let idq = hd(Ineq.getexact s) in
   let (s',tags,inq) = idq_fields idq in
-  let _ = report s' in
+  let candle_mk_all_reported = candle_mk_all_report s' in
   let _ = (s = s') || failwith "prove_ineq: wrong ineq" in 
   let thml = get_all_prep_nonlinear s in
     try (s,Hol_pervasives.prove(mk_imp(PNONL,inq),
@@ -310,7 +318,10 @@ let prove_ineq s =
 	     WRAPUP_TAC;
 	     REWRITE_TAC (thml);
             ]))
-    with Failure m -> let m' = ("NOT FOUND:"^s^" "^m) in (report m';(m',TRUTH));;
+    with Failure m ->
+      let m' = ("NOT FOUND:"^s^" "^m) in
+      let candle_mk_all_reported_failure = candle_mk_all_report m' in
+        (m',TRUTH);;
 
 
 let process s = 

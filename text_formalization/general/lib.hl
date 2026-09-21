@@ -413,7 +413,9 @@ let rec allpairs f l1 l2 =
 (* ------------------------------------------------------------------------- *)
 
 let report s =
-  Format.print_string s; Format.print_newline();;
+  let candle_report_string = Format.print_string s in
+  let candle_report_newline = Format.print_newline () in
+    ();;
 
 (* ------------------------------------------------------------------------- *)
 (* Convenient function for issuing a warning.                                *)
