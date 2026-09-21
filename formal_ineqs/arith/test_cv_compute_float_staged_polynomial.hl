@@ -1,0 +1,50 @@
+needs "arith/cv_compute_float_staged_polynomial.hl";;
+needs "arith/test_cv_compute_float_taylor.hl";;
+needs "arith/cv_compute_float_taylor_batch.hl";;
+
+open Cv_compute_float_staged_polynomial;;
+open Cv_compute_float_taylor;;
+
+let cv_float_staged_taylor_first_iabs =
+  map cv_taylor_float_iabs cv_float_taylor_test_dfs;;
+
+let cv_float_staged_taylor_first_monomials =
+  map2
+    (fun w eq -> [w;rand (concl eq)])
+    cv_float_taylor_test_ws cv_float_staged_taylor_first_iabs;;
+
+let cv_float_staged_taylor_first_reflected =
+  cv_float_staged_product_sum_hi 8
+    cv_float_staged_taylor_first_monomials;;
+
+let cv_float_staged_taylor_first =
+  cv_taylor_transfer_bound cv_float_staged_taylor_first_iabs
+    (cv_taylor_first_lhs cv_float_taylor_test_ws cv_float_taylor_test_dfs)
+    cv_float_staged_taylor_first_reflected;;
+
+let cv_float_staged_taylor_second_iabs,
+    cv_float_staged_taylor_second_lhs,
+    cv_float_staged_taylor_second_monomials =
+  Cv_compute_float_taylor_batch.cv_taylor_second_reflection
+    cv_float_taylor_test_ws cv_float_taylor_test_dds;;
+
+let cv_float_staged_taylor_second_reflected =
+  cv_float_staged_product_sum_hi 8
+    cv_float_staged_taylor_second_monomials;;
+
+let cv_float_staged_taylor_second =
+  cv_taylor_transfer_bound cv_float_staged_taylor_second_iabs
+    cv_float_staged_taylor_second_lhs
+    cv_float_staged_taylor_second_reflected;;
+
+if hyp cv_float_staged_taylor_first <> [] ||
+   hyp cv_float_staged_taylor_second <> [] then
+  failwith "staged Taylor theorem has assumptions";;
+
+if lhand (concl cv_float_staged_taylor_first) <>
+     cv_taylor_first_lhs cv_float_taylor_test_ws cv_float_taylor_test_dfs ||
+   lhand (concl cv_float_staged_taylor_second) <>
+     cv_taylor_second_lhs cv_float_taylor_test_ws cv_float_taylor_test_dds then
+  failwith "staged Taylor theorem shape mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_STAGED_POLYNOMIAL_OK";;

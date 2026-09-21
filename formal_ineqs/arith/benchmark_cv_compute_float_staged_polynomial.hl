@@ -1,0 +1,84 @@
+needs "arith/test_cv_compute_float_staged_polynomial.hl";;
+
+open Cv_compute_float_staged_polynomial;;
+open Cv_compute_float_taylor;;
+
+let cv_staged_taylor_process_cpu_ticks () =
+  let input = TextIO.openIn "/proc/self/stat" in
+  let text = TextIO.inputAll input in
+  let _ = TextIO.closeIn input in
+  let fields = Cake.String.tokens (fun c -> c = ' ') text in
+  int_of_string (List.nth fields 13) + int_of_string (List.nth fields 14);;
+
+let rec cv_staged_taylor_benchmark_repeat count operation =
+  if count <= 0 then ()
+  else
+    let _ = Arith_float.reset_cache () in
+    let _ = operation () in
+    cv_staged_taylor_benchmark_repeat (count - 1) operation;;
+
+let cv_staged_taylor_benchmark_ticks count operation =
+  let start_ticks = cv_staged_taylor_process_cpu_ticks () in
+  let _ = cv_staged_taylor_benchmark_repeat count operation in
+  cv_staged_taylor_process_cpu_ticks () - start_ticks;;
+
+let cv_staged_taylor_legacy_operation () =
+  let first =
+    cv_taylor_first_hi 8
+      cv_float_taylor_test_ws cv_float_taylor_test_dfs in
+  let second =
+    cv_taylor_second_hi 8
+      cv_float_taylor_test_ws cv_float_taylor_test_dds in
+  first,second;;
+
+let cv_staged_taylor_operation () =
+  let first_iabs =
+    map cv_taylor_float_iabs cv_float_taylor_test_dfs in
+  let first_monomials =
+    map2
+      (fun w eq -> [w;rand (concl eq)])
+      cv_float_taylor_test_ws first_iabs in
+  let first_reflected =
+    cv_float_staged_product_sum_hi 8 first_monomials in
+  let first =
+    cv_taylor_transfer_bound first_iabs
+      (cv_taylor_first_lhs
+        cv_float_taylor_test_ws cv_float_taylor_test_dfs)
+      first_reflected in
+  let second_iabs,second_lhs,second_monomials =
+    Cv_compute_float_taylor_batch.cv_taylor_second_reflection
+      cv_float_taylor_test_ws cv_float_taylor_test_dds in
+  let second_reflected =
+    cv_float_staged_product_sum_hi 8 second_monomials in
+  let second =
+    cv_taylor_transfer_bound second_iabs second_lhs second_reflected in
+  first,second;;
+
+(* Warm both theorem-producing paths before timing. *)
+let cv_staged_taylor_benchmark_warmup =
+  let _ = cv_staged_taylor_legacy_operation () in
+  let _ = cv_staged_taylor_operation () in
+  ();;
+
+let cv_staged_taylor_benchmark_repetitions = 10;;
+
+let cv_staged_taylor_legacy_ticks =
+  cv_staged_taylor_benchmark_ticks
+    cv_staged_taylor_benchmark_repetitions
+    cv_staged_taylor_legacy_operation;;
+
+let cv_staged_taylor_ticks =
+  cv_staged_taylor_benchmark_ticks
+    cv_staged_taylor_benchmark_repetitions
+    cv_staged_taylor_operation;;
+
+print_endline
+  ("CANDLE_CV_STAGED_TAYLOR_LEGACY_TICKS=" ^
+   string_of_int cv_staged_taylor_legacy_ticks);;
+print_endline
+  ("CANDLE_CV_STAGED_TAYLOR_TICKS=" ^
+   string_of_int cv_staged_taylor_ticks);;
+print_endline
+  ("CANDLE_CV_STAGED_TAYLOR_REPETITIONS=" ^
+   string_of_int cv_staged_taylor_benchmark_repetitions);;
+print_endline "CANDLE_CV_STAGED_TAYLOR_BENCHMARK_OK";;

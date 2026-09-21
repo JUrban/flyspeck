@@ -1,0 +1,455 @@
+(* ======================================================================== *)
+(* Staged proof-producing bounds for nonnegative Flyspeck polynomials.      *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE. Products are rounded after every factor and  *)
+(* accumulated with exact exponent-alignment witnesses. The whole staged   *)
+(* polynomial executes behind one Candle Kernel.compute call.              *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_native_float_staged_polynomial.ml";;
+needs "arith/cv_compute_float_polynomial.hl";;
+
+module Cv_compute_float_staged_polynomial = struct
+
+open Candle_cv_native_float_core;;
+open Candle_cv_native_float_mul;;
+open Candle_cv_native_float_staged;;
+open Candle_cv_native_float_staged_fold;;
+open Candle_cv_native_float_staged_polynomial;;
+open Cv_compute_num_exp;;
+open Cv_compute_float_sum;;
+open Cv_compute_float_polynomial;;
+open Num_exp_theory;;
+open Float_theory;;
+
+let candle_nf_value_num_exp = prove
+ (`!n e.
+     candle_nf_value arith_base (n,e) = num_exp n e`,
+  REWRITE_TAC[candle_nf_value_def; num_exp; arith_base_def; FST; SND]);;
+
+let candle_nf_num_exp_zero = prove
+ (`!e. num_exp 0 e = 0`,
+  REWRITE_TAC[num_exp; MULT_CLAUSES]);;
+
+(* Keep the staged product symbolic at the theorem boundary.  This bridge is
+   what lets the checker avoid constructing the enormous exact product that
+   the coarse reflected path creates before rounding. *)
+let candle_nf_staged_product_real_value_def = define
+ `(candle_nf_staged_product_real_value radix scale
+      ([]:(num list#(num#num))list) = &1) /\
+  (candle_nf_staged_product_real_value radix scale (CONS h t) =
+     (&(candle_nf_value radix (SND h)) / &(radix EXP scale)) *
+     candle_nf_staged_product_real_value radix scale t)`;;
+
+let candle_nf_staged_product_float_value_def = define
+ `(candle_nf_staged_product_float_value
+      ([]:(num list#(num#num))list) = &1) /\
+  (candle_nf_staged_product_float_value (CONS h t) =
+     float_num F (FST (SND h)) (SND (SND h)) *
+     candle_nf_staged_product_float_value t)`;;
+
+let candle_nf_staged_product_real_quotient = prove
+ (`!steps radix scale.
+     ~(radix = 0)
+     ==> candle_nf_staged_product_real_value radix scale steps =
+         &(candle_nf_staged_product_value radix steps) /
+         &(radix EXP scale) pow LENGTH steps`,
+  LIST_INDUCT_TAC THENL
+   [REPEAT GEN_TAC THEN DISCH_TAC THEN
+    ASM_REWRITE_TAC
+      [candle_nf_staged_product_real_value_def;
+       candle_nf_staged_product_value_def; LENGTH; real_pow;
+       REAL_OF_NUM_MUL; REAL_DIV_1];
+    FIRST_X_ASSUM (LABEL_TAC "IH") THEN
+    REPEAT GEN_TAC THEN DISCH_TAC THEN
+    USE_THEN "IH" (fun ih ->
+      ASSUME_TAC
+        (MATCH_MP
+          (SPECL [`radix:num`;`scale:num`] ih)
+          (ASSUME `~(radix = 0)`))) THEN
+    ASM_REWRITE_TAC
+      [candle_nf_staged_product_real_value_def;
+       candle_nf_staged_product_value_def; LENGTH; real_pow;
+       REAL_OF_NUM_MUL] THEN
+    REWRITE_TAC
+      [real_div; REAL_INV_MUL; REAL_OF_NUM_MUL; REAL_MUL_AC;
+       MULT_SYM]]);;
+
+let candle_nf_staged_product_real_bound = prove
+ (`!steps radix scale limit.
+     ~(radix = 0) /\
+     candle_nf_staged_product_valid radix scale limit steps (1,scale)
+     ==> candle_nf_staged_product_real_value radix scale steps <=
+         &(candle_nf_value radix
+             (candle_nf_staged_product radix scale limit steps (1,scale))) /
+         &(radix EXP scale)`,
+  REPEAT STRIP_TAC THEN
+  ASM_SIMP_TAC[candle_nf_staged_product_real_quotient] THEN
+  SUBGOAL_THEN `&0 < &(radix EXP scale)` ASSUME_TAC THENL
+   [REWRITE_TAC[REAL_OF_NUM_LT; EXP_LT_0] THEN ASM_ARITH_TAC;
+    ALL_TAC] THEN
+  ASM_SIMP_TAC[REAL_LE_RDIV_EQ] THEN
+  REWRITE_TAC[REAL_ARITH `(p / q) * d = (p * d) / q`] THEN
+  ASM_SIMP_TAC[REAL_LE_LDIV_EQ; REAL_POW_LT] THEN
+  REWRITE_TAC
+    [REAL_OF_NUM_MUL; REAL_OF_NUM_POW; REAL_OF_NUM_LE] THEN
+  MP_TAC
+    (SPECL
+      [`steps:(num list#(num#num))list`; `radix:num`; `scale:num`;
+       `limit:num`; `(1,scale):num#num`]
+      candle_nf_staged_product_sound) THEN
+  ASM_REWRITE_TAC
+    [candle_nf_value_def; FST; SND; MULT_CLAUSES] THEN
+  MESON_TAC[MULT_SYM]);;
+
+let candle_nf_staged_product_float_bridge = prove
+ (`!steps.
+     candle_nf_staged_product_float_value steps =
+     candle_nf_staged_product_real_value arith_base min_exp steps`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC
+    [candle_nf_staged_product_float_value_def;
+     candle_nf_staged_product_real_value_def;
+     candle_nf_value_def; float; REAL_MUL_LID; num_exp;
+     arith_base_def; FST; SND; MULT_CLAUSES]);;
+
+let candle_nf_staged_product_float_bound = prove
+ (`!steps limit.
+     candle_nf_staged_product_valid
+       arith_base min_exp limit steps (1,min_exp)
+     ==> candle_nf_staged_product_float_value steps <=
+         float_num F
+           (FST (candle_nf_staged_product
+             arith_base min_exp limit steps (1,min_exp)))
+           (SND (candle_nf_staged_product
+             arith_base min_exp limit steps (1,min_exp)))`,
+  REPEAT STRIP_TAC THEN
+  MP_TAC
+    (SPECL
+      [`steps:(num list#(num#num))list`; `arith_base`; `min_exp`;
+       `limit:num`]
+      candle_nf_staged_product_real_bound) THEN
+  ASM_REWRITE_TAC
+    [arith_base_neq0; GSYM candle_nf_staged_product_float_bridge;
+     float; candle_nf_value_def; REAL_MUL_LID; num_exp;
+     arith_base_def; FST; SND; MULT_CLAUSES]);;
+
+let cv_staged_zeros count =
+  mk_list (replicate `0` count,`:num`);;
+
+let cv_staged_num_sub left right =
+  if compare_num left right < 0 then num 0 else left -/ right;;
+
+let cv_staged_round_plan radix limit (n,e) =
+  let rec run fuel_count current_n current_e =
+    if compare_num current_n limit < 0 then
+      (current_n,current_e,fuel_count + 1)
+    else
+      let quotient = quo_num current_n radix and
+          remainder = mod_num current_n radix in
+      let increment =
+        if compare_num remainder (num 0) = 0 then num 0 else num 1 in
+      run (fuel_count + 1) (quotient +/ increment) (current_e +/ num 1) in
+  run 0 n e;;
+
+let cv_staged_product_plan radix scale limit pairs =
+  let rec run acc steps remaining =
+    match remaining with
+    | [] -> rev steps,acc
+    | ((n,e) as factor) :: tail ->
+        let raw_n = fst acc */ n and
+            raw_e = cv_staged_num_sub (snd acc +/ e) scale in
+        let result_n,result_e,fuel_count =
+          cv_staged_round_plan radix limit (raw_n,raw_e) in
+        let step =
+          mk_pair
+            (cv_staged_zeros fuel_count,
+             mk_pair (mk_numeral n,mk_numeral e)) in
+        run (result_n,result_e) (step :: steps) tail in
+  let steps,result = run (num 1,scale) [] pairs in
+  mk_list (steps,`:num list#(num#num)`),
+  mk_pair (mk_numeral (fst result),mk_numeral (snd result));;
+
+let cv_staged_add_plan radix limit acc term =
+  let acc_n,acc_e = acc and term_n,term_e = term in
+  let target,raw_n =
+    if compare_num acc_e term_e < 0 then
+      acc_e,acc_n +/ term_n */ power_num radix (term_e -/ acc_e)
+    else
+      term_e,acc_n */ power_num radix (acc_e -/ term_e) +/ term_n in
+  let result_n,result_e,fuel_count =
+    cv_staged_round_plan radix limit (raw_n,target) in
+  (result_n,result_e),fuel_count;;
+
+let cv_staged_reduce rules tm =
+  let rewritten = REWRITE_CONV rules tm in
+  let reduced = NUM_REDUCE_CONV (rand (concl rewritten)) in
+  TRANS rewritten reduced;;
+
+let cv_staged_product_eval base_tm scale_tm limit_tm steps_tm =
+  cv_staged_reduce
+    [candle_nf_staged_product_def;
+     candle_nf_scaled_mul_round_hi_def; candle_nf_round_hi_def;
+     FST; SND]
+    (list_mk_comb
+      (`candle_nf_staged_product`,
+       [base_tm;scale_tm;limit_tm;steps_tm;mk_pair (`1`,scale_tm)]));;
+
+let cv_staged_product_valid base_tm scale_tm limit_tm steps_tm =
+  let predicate =
+    list_mk_comb
+      (`candle_nf_staged_product_valid`,
+       [base_tm;scale_tm;limit_tm;steps_tm;mk_pair (`1`,scale_tm)]) in
+  let rewritten =
+    REWRITE_CONV
+      [candle_nf_staged_product_valid_def;
+       candle_nf_scaled_mul_round_hi_def; candle_nf_round_hi_def;
+       FST; SND; LENGTH]
+      predicate in
+  EQT_ELIM
+    (TRANS rewritten (NUM_REDUCE_CONV (rand (concl rewritten))));;
+
+let cv_staged_add_eval base_tm limit_tm round_fuel power_fuel acc term =
+  cv_staged_reduce
+    [candle_nf_add_round_hi_def; candle_nf_add_raw_def;
+     candle_nf_power_fuel_def; candle_nf_round_hi_def;
+     FST; SND]
+    (list_mk_comb
+      (`candle_nf_add_round_hi`,
+       [base_tm;limit_tm;round_fuel;power_fuel;acc;term]));;
+
+let cv_staged_sum_inequalities inequalities =
+  let rec build ths =
+    match ths with
+    | [] -> SPEC `&0` REAL_LE_REFL
+    | th :: tail ->
+        MATCH_MP REAL_LE_ADD2 (CONJ th (build tail)) in
+  build inequalities;;
+
+let rec cv_staged_map5 f vs ws xs ys zs =
+  match vs,ws,xs,ys,zs with
+  | [],[],[],[],[] -> []
+  | v :: vt,w :: wt,x :: xt,y :: yt,z :: zt ->
+      f v w x y z :: cv_staged_map5 f vt wt xt yt zt
+  | _ -> failwith "cv_staged_map5: length mismatch";;
+
+let rec cv_staged_real_product factors =
+  match factors with
+  | [] -> failwith "cv_staged_real_product: empty product"
+  | [factor] -> factor
+  | factor :: tail ->
+      mk_binop `(*):real->real->real` factor
+        (cv_staged_real_product tail);;
+
+let cv_float_staged_product_sum_hi (p:int) monomials =
+  if p <= 0 then
+    failwith "cv_float_staged_product_sum_hi: nonpositive precision"
+  else if monomials = [] then
+    failwith "cv_float_staged_product_sum_hi: empty polynomial"
+  else if exists (fun factors -> factors = []) monomials then
+    failwith "cv_float_staged_product_sum_hi: empty monomial"
+  else
+    let raw_and_converted =
+      map
+        (map
+          (fun factor ->
+            let n_hash,e_hash = cv_dest_positive_float factor in
+            let n_eq = cv_hash_to_numeral n_hash and
+                e_eq = cv_hash_to_numeral e_hash in
+            ((n_hash,e_hash),(n_eq,e_eq),
+             (rand (concl n_eq),rand (concl e_eq)))))
+        monomials in
+    let numeral_monomials =
+      map (map (fun (_,_,pair) -> pair)) raw_and_converted in
+    let base = Arith_num.arith_base in
+    let base_tm = mk_small_numeral base and
+        scale_tm = mk_small_numeral Float_theory.min_exp and
+        limit_tm = mk_numeral (power_num (num base) (num p)) in
+    let base_num = num base and scale_num = num Float_theory.min_exp and
+        limit_num = power_num (num base) (num p) in
+    let numeric_monomials =
+      map (map (fun (n,e) -> dest_numeral n,dest_numeral e))
+        numeral_monomials in
+    let product_plans =
+      map
+        (cv_staged_product_plan base_num scale_num limit_num)
+        numeric_monomials in
+    let product_steps = map fst product_plans and
+        product_results = map snd product_plans in
+    let product_evals =
+      map (cv_staged_product_eval base_tm scale_tm limit_tm)
+        product_steps in
+    if exists (fun mismatch -> mismatch)
+         (map2 (fun result eval -> result <> rand (concl eval))
+           product_results product_evals) then
+      failwith "cv_float_staged_product_sum_hi: product plan mismatch";
+    let product_valids =
+      map (cv_staged_product_valid base_tm scale_tm limit_tm)
+        product_steps in
+    let rec prepare_jobs acc acc_numeric steps results evals =
+      match steps,results,evals with
+      | [],[],[] -> [],[],acc
+      | step :: step_tail,result :: result_tail,eval :: eval_tail ->
+          let _,acc_e = dest_pair acc and _,result_e = dest_pair result in
+          let acc_exponent = dest_numeral acc_e and
+              result_exponent = dest_numeral result_e in
+          let delta =
+            if compare_num acc_exponent result_exponent < 0 then
+              result_exponent -/ acc_exponent
+            else acc_exponent -/ result_exponent in
+          let power_fuel =
+            cv_staged_zeros (Num.int_of_num delta) in
+          let result_n_tm,result_e_tm = dest_pair result in
+          let result_numeric =
+            dest_numeral result_n_tm,dest_numeral result_e_tm in
+          let next_numeric,round_fuel_count =
+            cv_staged_add_plan base_num limit_num acc_numeric result_numeric in
+          let round_fuel = cv_staged_zeros round_fuel_count in
+          let add_eval =
+            cv_staged_add_eval base_tm limit_tm round_fuel power_fuel
+              acc result in
+          let next_acc = rand (concl add_eval) in
+          let expected_next =
+            mk_pair
+              (mk_numeral (fst next_numeric),mk_numeral (snd next_numeric)) in
+          if next_acc <> expected_next then
+            failwith "cv_float_staged_product_sum_hi: addition plan mismatch";
+          let tail_jobs,tail_evals,final_acc =
+            prepare_jobs next_acc next_numeric
+              step_tail result_tail eval_tail in
+          (mk_pair (step,mk_pair (round_fuel,power_fuel)) :: tail_jobs,
+           add_eval :: tail_evals,final_acc)
+      | _ -> failwith "cv_float_staged_product_sum_hi: internal length mismatch" in
+    let initial_acc = mk_pair (`0`,scale_tm) in
+    let jobs,add_evals,ordinary_result =
+      prepare_jobs initial_acc (num 0,scale_num)
+        product_steps product_results product_evals in
+    let jobs_tm =
+      mk_list
+        (jobs,
+         `:((num list#(num#num))list)#(num list#num list)`) in
+    let validity_tm =
+      list_mk_comb
+        (`candle_nf_staged_polynomial_valid`,
+         [base_tm;scale_tm;limit_tm;jobs_tm;initial_acc]) in
+    let validity_rewrite =
+      REWRITE_CONV
+        ([candle_nf_staged_polynomial_valid_def;
+          candle_nf_add_power_complete_def; LENGTH; FST; SND] @
+         product_valids @ product_evals @ add_evals)
+        validity_tm in
+    let validity =
+      EQT_ELIM
+        (TRANS validity_rewrite
+          (NUM_REDUCE_CONV (rand (concl validity_rewrite)))) in
+    let jobs_rep =
+      REWRITE_CONV
+        [candle_nf_staged_polynomial_jobs_def;
+         candle_nf_staged_polynomial_job_def;
+         candle_nf_staged_product_steps_def;
+         candle_nf_staged_product_step_def;
+         candle_nf_fuel_def; candle_nf_pair_def; FST; SND]
+        (mk_comb (`candle_nf_staged_polynomial_jobs`,jobs_tm)) in
+    let initial_acc_rep =
+      REWRITE_CONV[candle_nf_pair_def; FST; SND]
+        (mk_comb (`candle_nf_pair`,initial_acc)) in
+    let expression =
+      list_mk_comb
+        (`candle_cv_nf_staged_polynomial`,
+         [mk_comb (`Cexp_num`,base_tm);
+          mk_comb (`Cexp_num`,scale_tm);
+          mk_comb (`Cexp_num`,limit_tm);
+          rand (concl jobs_rep);
+          rand (concl initial_acc_rep)]) in
+    let computation =
+      compute candle_cv_nf_staged_polynomial_compute_eqs expression in
+    let n_cval,e_cval = cv_dest_cval_pair (rand (concl computation)) in
+    let n_result = cv_dest_cval_num n_cval and
+        e_result = cv_dest_cval_num e_cval in
+    let correct =
+      SPECL [jobs_tm;base_tm;scale_tm;limit_tm;initial_acc]
+        candle_cv_nf_staged_polynomial_correct in
+    let correct = PURE_REWRITE_RULE[jobs_rep;initial_acc_rep] correct in
+    let represented_result = TRANS (SYM correct) computation in
+    let result_eq =
+      REWRITE_RULE
+        [candle_nf_pair_roundtrip; candle_nf_decode_pair_def;
+         candle_nf_decode_num_def]
+        (AP_TERM `candle_nf_decode_pair` represented_result) in
+    let sound =
+      SPECL [jobs_tm;base_tm;scale_tm;limit_tm;initial_acc]
+        candle_nf_staged_polynomial_sound in
+    let sound =
+      MP sound
+        (CONJ
+          (EQT_ELIM (NUM_REDUCE_CONV (mk_neg (mk_eq (base_tm,`0`)))))
+          validity) in
+    let value_num_exp =
+      REWRITE_RULE[arith_base_def] candle_nf_value_num_exp in
+    let result_pairs_tm = mk_list (product_results,`:num#num`) in
+    let value_bridge_tm =
+      mk_eq
+        (list_mk_comb
+          (`candle_nf_staged_polynomial_value`,
+           [base_tm;scale_tm;limit_tm;jobs_tm]),
+         mk_comb (`candle_nf_pair_num_sum`,result_pairs_tm)) in
+    let value_bridge =
+      prove
+        (value_bridge_tm,
+         REWRITE_TAC
+           ([candle_nf_staged_polynomial_value_def;
+             candle_nf_pair_num_sum_def; value_num_exp;
+             FST; SND] @ product_evals)) in
+    let num_sound =
+      REWRITE_RULE
+        [result_eq;value_bridge;value_num_exp;
+         candle_nf_num_exp_zero; ADD_CLAUSES; FST; SND]
+        sound in
+    let rounded_float_sound =
+      MP
+        (SPECL [result_pairs_tm;n_result;e_result]
+          candle_nf_pair_float_sum_bound)
+        num_sound in
+    let rounded_float_sound =
+      REWRITE_RULE[candle_nf_pair_float_sum_def; FST; SND]
+        rounded_float_sound in
+    let monomial_bounds =
+      cv_staged_map5
+        (fun factors steps valid eval factor_data ->
+          let product_bound =
+            REWRITE_RULE[arith_base_def;min_exp_def]
+              (SPECL [steps;limit_tm]
+                candle_nf_staged_product_float_bound) in
+          let bound =
+            MATCH_MP product_bound valid in
+          let bound =
+            REWRITE_RULE
+              [arith_base_def; eval; FST; SND;
+               candle_nf_staged_product_float_value_def; REAL_MUL_RID]
+              bound in
+          let input_rewrites =
+            List.flatten
+              (map
+                (fun (_, (n_eq,e_eq),_) -> [GSYM n_eq;GSYM e_eq])
+                factor_data) in
+          let bound = PURE_REWRITE_RULE input_rewrites bound in
+          if lhand (concl bound) <> cv_staged_real_product factors then
+            failwith
+              "cv_float_staged_product_sum_hi: product theorem mismatch";
+          bound)
+        monomials product_steps product_valids product_evals
+        raw_and_converted in
+    let source_to_rounded =
+      REWRITE_RULE[candle_nf_pair_float_sum_def; FST; SND]
+        (cv_staged_sum_inequalities monomial_bounds) in
+    let final_bound =
+      MATCH_MP REAL_LE_TRANS (CONJ source_to_rounded rounded_float_sound) in
+    let first_n_hash,first_e_hash =
+      let (raw,_,_) = hd (hd raw_and_converted) in raw in
+    let n_result_hash =
+      cv_numeral_to_hash (cv_is_wrapped_numeral first_n_hash) n_result and
+        e_result_hash =
+          cv_numeral_to_hash (cv_is_wrapped_numeral first_e_hash) e_result in
+    PURE_REWRITE_RULE [n_result_hash;e_result_hash] final_bound;;
+
+end;;
