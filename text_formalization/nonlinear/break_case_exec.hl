@@ -97,11 +97,14 @@ partition on (xleft,zleft). So changing the side exchanges right and left all th
 
 
 let rec string_of_iargs = function 
-  | Iarg_leaf msec -> Printf.sprintf "\n Iarg_leaf %d" msec
-  | Iarg_facet ((i,b),frac,msec,a) -> Printf.sprintf "\n Iarg_facet ((%d,%s),%3.4f,%d,%s)"
-      i (string_of_bool b) frac msec (string_of_iargs a)
-  | Iarg_bisect(idx,a,b) -> Printf.sprintf "\n Iarg_bisect (%d,%s,%s)" 
-      idx (string_of_iargs a) (string_of_iargs b);;
+  | Iarg_leaf msec -> "\n Iarg_leaf " ^ string_of_int msec
+  | Iarg_facet ((i,b),frac,msec,a) ->
+      "\n Iarg_facet ((" ^ string_of_int i ^ "," ^ string_of_bool b ^
+      ")," ^ string_of_float frac ^ "," ^ string_of_int msec ^ "," ^
+      string_of_iargs a ^ ")"
+  | Iarg_bisect(idx,a,b) ->
+      "\n Iarg_bisect (" ^ string_of_int idx ^ "," ^ string_of_iargs a ^
+      "," ^ string_of_iargs b ^ ")";;
 
 
 
@@ -787,7 +790,8 @@ let run_generic get_tactic needs_delta_ineq s =
 
 let all_oxl_idv = 
   let ij = List.flatten (map (fun i -> [(1,i);(2,i);(3,i);(4,i)]) (0--45)) in
-  let p (i,j) = Printf.sprintf "prep-OXLZLEZ 6346351218 %d %d" i j in
+  let p (i,j) =
+    "prep-OXLZLEZ 6346351218 " ^ string_of_int i ^ " " ^ string_of_int j in
     map p ij;;
 
 (* generating OXL inequality series *)
