@@ -685,7 +685,7 @@ let mk_decimal10000  =
   let d = mk_small_numeral 10000 in
   let dec = `DECIMAL` in
     fun r ->
-      let r' = mk_small_numeral (truncate(10000.0 *. r)) in
+      let r' = mk_small_numeral (int_of_float(10000.0 *. r)) in
 	mk_comb (mk_comb (dec,r'),d);;
 
 let mk_frac_left =  
