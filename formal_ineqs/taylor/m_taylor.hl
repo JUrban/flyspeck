@@ -134,7 +134,9 @@ REWRITE_TAC[IN_NUMSEG] THEN REPEAT GEN_TAC THEN DISCH_TAC THEN REWRITE_TAC[vecto
 
 let gen_comp_thm n i =
   let i_tm = mk_small_numeral i and
-      x_list = mk_list (map (fun i -> mk_var("x"^(string_of_int i), aty)) (1--n), aty) in
+      x_list = mk_list (map (fun i ->
+        let name = "x" ^ string_of_int i in
+        mk_var (name,aty)) (1--n), aty) in
   let th0 = (ISPECL [x_list; i_tm] o inst_first_type_var (n_type_array.(n))) VECTOR_COMPONENT in
   let th1 = (CONV_RULE NUM_REDUCE_CONV o REWRITE_RULE[IN_NUMSEG; dimindex_array.(n)]) th0 in
     REWRITE_RULE[el_thms_array.(n).(i - 1)] th1;;
