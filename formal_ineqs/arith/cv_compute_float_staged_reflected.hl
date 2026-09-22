@@ -1,0 +1,277 @@
+(* ======================================================================== *)
+(* Coarse reflected validity and one-shot soundness for staged polynomials. *)
+(*                                                                          *)
+(* DEVELOPMENT / NON-RELEASE.  Host code prepares only an untrusted staged  *)
+(* plan.  Kernel.compute checks the complete plan and result; one generic    *)
+(* theorem then connects the symbolic source polynomial to that result.      *)
+(* ======================================================================== *)
+
+needs "candle/cv_compute_native_float_staged_sound.ml";;
+needs "arith/cv_compute_float_staged_polynomial.hl";;
+
+module Cv_compute_float_staged_reflected = struct
+
+open Candle_cv_native_float_core;;
+open Candle_cv_native_float_staged;;
+open Candle_cv_native_float_staged_fold;;
+open Candle_cv_native_float_staged_polynomial;;
+open Candle_cv_native_float_staged_validity;;
+open Cv_compute_num_exp;;
+open Cv_compute_float_sum;;
+open Cv_compute_float_staged_polynomial;;
+open Num_exp_theory;;
+open Float_theory;;
+
+let candle_nf_staged_polynomial_float_value_def = define
+ `(candle_nf_staged_polynomial_float_value
+      ([]:(((num list#(num#num))list)#(num list#num list))list) = &0) /\
+  (candle_nf_staged_polynomial_float_value (CONS h t) =
+     candle_nf_staged_product_float_value (FST h) +
+     candle_nf_staged_polynomial_float_value t)`;;
+
+let candle_nf_staged_product_scaled_float_bridge = prove
+ (`!steps.
+     candle_nf_staged_product_scaled_value arith_base min_exp steps =
+     candle_nf_staged_product_float_value steps`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC
+    [candle_nf_staged_product_scaled_value_def;
+     candle_nf_staged_product_float_value_def;
+     candle_nf_value_def; float; num_exp; arith_base_def;
+     FST; SND; REAL_MUL_LID; MULT_CLAUSES]);;
+
+let candle_nf_staged_polynomial_scaled_float_bridge = prove
+ (`!jobs.
+     candle_nf_staged_polynomial_scaled_value arith_base min_exp jobs =
+     candle_nf_staged_polynomial_float_value jobs`,
+  LIST_INDUCT_TAC THEN
+  ASM_REWRITE_TAC
+    [candle_nf_staged_polynomial_scaled_value_def;
+     candle_nf_staged_polynomial_float_value_def;
+     candle_nf_staged_product_scaled_float_bridge]);;
+
+let candle_nf_value_scaled_float = prove
+ (`!n e.
+     &(candle_nf_value arith_base (n,e)) /
+       &(arith_base EXP min_exp) =
+     float_num F n e`,
+  REWRITE_TAC
+    [candle_nf_value_def; float; num_exp; arith_base_def;
+     FST; SND; REAL_MUL_LID; MULT_CLAUSES]);;
+
+(* Optional development trace. Disabled by default. *)
+let cv_staged_reflected_trace : (string -> unit) option ref = ref None;;
+
+let cv_staged_reflected_note message =
+  match !cv_staged_reflected_trace with
+  | None -> ()
+  | Some sink -> sink message;;
+
+let cv_float_staged_product_sum_hi_reflected (p:int) monomials =
+  let profile_sink = !cv_staged_polynomial_profile_sink in
+  let profile_clock () =
+    match profile_sink with
+    | None -> 0.0
+    | Some _ -> (!cv_staged_polynomial_profile_clock) () in
+  let source_plan_started = profile_clock () in
+  if p <= 0 then
+    failwith "cv_float_staged_product_sum_hi_reflected: nonpositive precision"
+  else if monomials = [] then
+    failwith "cv_float_staged_product_sum_hi_reflected: empty polynomial"
+  else if exists (fun factors -> factors = []) monomials then
+    failwith "cv_float_staged_product_sum_hi_reflected: empty monomial"
+  else
+    let raw_and_converted =
+      map
+        (map
+          (fun factor ->
+            let n_hash,e_hash = cv_dest_positive_float factor in
+            let n_eq = cv_hash_to_numeral n_hash and
+                e_eq = cv_hash_to_numeral e_hash in
+            ((n_hash,e_hash),(n_eq,e_eq),
+             (rand (concl n_eq),rand (concl e_eq)))))
+        monomials in
+    let numeral_monomials =
+      map (map (fun (_,_,pair) -> pair)) raw_and_converted in
+    let base = Arith_num.arith_base in
+    let base_tm = mk_small_numeral base and
+        scale_tm = mk_small_numeral Float_theory.min_exp and
+        limit_tm = mk_numeral (power_num (num base) (num p)) in
+    let base_num = num base and scale_num = num Float_theory.min_exp and
+        limit_num = power_num (num base) (num p) in
+    let numeric_monomials =
+      map (map (fun (n,e) -> dest_numeral n,dest_numeral e))
+        numeral_monomials in
+    let product_plans =
+      map
+        (cv_staged_product_plan base_num scale_num limit_num)
+        numeric_monomials in
+    let product_steps = map fst product_plans and
+        product_results = map snd product_plans in
+    let _ = cv_staged_reflected_note "host-plan" in
+    let rec prepare_jobs acc acc_numeric steps results =
+      match steps,results with
+      | [],[] -> [],acc
+      | step :: step_tail,result :: result_tail ->
+          let _,acc_e = dest_pair acc and _,result_e = dest_pair result in
+          let acc_exponent = dest_numeral acc_e and
+              result_exponent = dest_numeral result_e in
+          let delta =
+            if compare_num acc_exponent result_exponent < 0 then
+              result_exponent -/ acc_exponent
+            else acc_exponent -/ result_exponent in
+          let power_fuel = cv_staged_zeros (Num.int_of_num delta) in
+          let result_n_tm,result_e_tm = dest_pair result in
+          let result_numeric =
+            dest_numeral result_n_tm,dest_numeral result_e_tm in
+          let next_numeric,round_fuel_count =
+            cv_staged_add_plan base_num limit_num acc_numeric result_numeric in
+          let round_fuel = cv_staged_zeros round_fuel_count in
+          let next_acc =
+            mk_pair
+              (mk_numeral (fst next_numeric),
+               mk_numeral (snd next_numeric)) in
+          let tail_jobs,final_acc =
+            prepare_jobs next_acc next_numeric step_tail result_tail in
+          (mk_pair (step,mk_pair (round_fuel,power_fuel)) :: tail_jobs,
+           final_acc)
+      | _ ->
+          failwith
+            "cv_float_staged_product_sum_hi_reflected: internal length mismatch" in
+    let initial_acc = mk_pair (`0`,scale_tm) in
+    let jobs,ordinary_result =
+      prepare_jobs initial_acc (num 0,scale_num)
+        product_steps product_results in
+    let jobs_tm =
+      mk_list
+        (jobs,
+         `:((num list#(num#num))list)#(num list#num list)`) in
+    let source_plan_finished = profile_clock () in
+    let jobs_rep =
+      REWRITE_CONV
+        [candle_nf_staged_polynomial_jobs_def;
+         candle_nf_staged_polynomial_job_def;
+         candle_nf_staged_product_steps_def;
+         candle_nf_staged_product_step_def;
+         candle_nf_fuel_def; candle_nf_pair_def; FST; SND]
+        (mk_comb (`candle_nf_staged_polynomial_jobs`,jobs_tm)) in
+    let initial_acc_rep =
+      REWRITE_CONV[candle_nf_pair_def; FST; SND]
+        (mk_comb (`candle_nf_pair`,initial_acc)) in
+    let jobs_cval = rand (concl jobs_rep) and
+        initial_acc_cval = rand (concl initial_acc_rep) in
+    let _ = cv_staged_reflected_note "source-representation" in
+    let precompute_finished = profile_clock () in
+    let computation_started = profile_clock () in
+    let validity_expression =
+      list_mk_comb
+        (`candle_cv_nf_staged_polynomial_valid`,
+         [mk_comb (`Cexp_num`,base_tm);
+          mk_comb (`Cexp_num`,scale_tm);
+          mk_comb (`Cexp_num`,limit_tm);
+          jobs_cval;initial_acc_cval]) in
+    let validity_computation =
+      compute candle_cv_nf_staged_validity_compute_eqs
+        validity_expression in
+    let _ = cv_staged_reflected_note "validity-compute" in
+    if rand (concl validity_computation) <> `Cexp_num 1` then
+      failwith
+        "cv_float_staged_product_sum_hi_reflected: invalid staged plan";
+    let expression =
+      list_mk_comb
+        (`candle_cv_nf_staged_polynomial`,
+         [mk_comb (`Cexp_num`,base_tm);
+          mk_comb (`Cexp_num`,scale_tm);
+          mk_comb (`Cexp_num`,limit_tm);
+          jobs_cval;initial_acc_cval]) in
+    let computation =
+      compute candle_cv_nf_staged_polynomial_compute_eqs expression in
+    let _ = cv_staged_reflected_note "result-compute" in
+    let computation_finished = profile_clock () in
+    let n_cval,e_cval = cv_dest_cval_pair (rand (concl computation)) in
+    let n_result = cv_dest_cval_num n_cval and
+        e_result = cv_dest_cval_num e_cval in
+    if ordinary_result <>
+       mk_pair (n_result,e_result) then
+      failwith
+        "cv_float_staged_product_sum_hi_reflected: host/evaluator mismatch";
+    let validity_correct =
+      SPECL [jobs_tm;base_tm;scale_tm;limit_tm;initial_acc]
+        candle_cv_nf_staged_polynomial_valid_correct in
+    let validity_correct =
+      PURE_REWRITE_RULE[jobs_rep;initial_acc_rep] validity_correct in
+    let validity_bridge =
+      TRANS (SYM validity_correct) validity_computation in
+    let validity =
+      MATCH_MP candle_cv_nf_boolean_true validity_bridge in
+    let _ = cv_staged_reflected_note "validity-theorem" in
+    let correct =
+      SPECL [jobs_tm;base_tm;scale_tm;limit_tm;initial_acc]
+        candle_cv_nf_staged_polynomial_correct in
+    let correct = PURE_REWRITE_RULE[jobs_rep;initial_acc_rep] correct in
+    let represented_result = TRANS (SYM correct) computation in
+    let result_eq =
+      REWRITE_RULE
+        [candle_nf_pair_roundtrip; candle_nf_decode_pair_def;
+         candle_nf_decode_num_def]
+        (AP_TERM `candle_nf_decode_pair` represented_result) in
+    let _ = cv_staged_reflected_note "result-theorem" in
+    let sound =
+      SPECL [jobs_tm;base_tm;scale_tm;limit_tm;initial_acc]
+        candle_nf_staged_polynomial_scaled_sound in
+    let sound =
+      MP sound
+        (CONJ
+          (EQT_ELIM (NUM_REDUCE_CONV (mk_neg (mk_eq (base_tm,`0`)))))
+          validity) in
+    let _ = cv_staged_reflected_note "generic-soundness" in
+    let input_rewrites =
+      List.flatten
+        (List.flatten
+          (map
+            (map (fun (_, (n_eq,e_eq),_) -> [GSYM n_eq;GSYM e_eq]))
+            raw_and_converted)) in
+    let value_scaled_float =
+      REWRITE_RULE[arith_base_def;min_exp_def]
+        candle_nf_value_scaled_float and
+        polynomial_scaled_float_bridge =
+          REWRITE_RULE[arith_base_def;min_exp_def]
+            candle_nf_staged_polynomial_scaled_float_bridge in
+    let result_float =
+      REWRITE_RULE
+        [result_eq; value_scaled_float;
+         polynomial_scaled_float_bridge;
+         candle_nf_staged_polynomial_float_value_def;
+         candle_nf_staged_product_float_value_def;
+         candle_nf_num_exp_zero; FLOAT_0; REAL_MUL_RID; REAL_ADD_LID;
+         FST; SND]
+        sound in
+    let result_float = PURE_REWRITE_RULE input_rewrites result_float in
+    let _ = cv_staged_reflected_note "source-handoff" in
+    let first_n_hash,first_e_hash =
+      let (raw,_,_) = hd (hd raw_and_converted) in raw in
+    let n_result_hash =
+      cv_numeral_to_hash (cv_is_wrapped_numeral first_n_hash) n_result and
+        e_result_hash =
+          cv_numeral_to_hash (cv_is_wrapped_numeral first_e_hash) e_result in
+    let result =
+      PURE_REWRITE_RULE [n_result_hash;e_result_hash] result_float in
+    let _ = cv_staged_reflected_note "result-handoff" in
+    let handoff_finished = profile_clock () in
+    (match profile_sink with
+     | None -> ()
+     | Some sink ->
+         sink
+           {input_monomials = length monomials;
+            input_factors = itlist (+) (map length monomials) 0;
+            source_plan_seconds =
+              source_plan_finished -. source_plan_started;
+            precompute_proof_seconds =
+              precompute_finished -. source_plan_finished;
+            kernel_compute_seconds =
+              computation_finished -. computation_started;
+            theorem_handoff_seconds =
+              handoff_finished -. computation_finished});
+    result;;
+
+end;;

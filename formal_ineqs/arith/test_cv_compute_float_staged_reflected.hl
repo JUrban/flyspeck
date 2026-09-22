@@ -1,0 +1,34 @@
+needs "arith/cv_compute_float_staged_reflected.hl";;
+needs "arith/test_cv_compute_float_taylor.hl";;
+
+open Cv_compute_float_staged_polynomial;;
+open Cv_compute_float_staged_reflected;;
+open Cv_compute_float_taylor;;
+open Float_theory;;
+
+let candle_cv_reflected_test_iabs =
+  map cv_taylor_float_iabs cv_float_taylor_test_dfs;;
+
+let candle_cv_reflected_test_monomials =
+  map2
+    (fun w eq -> [w;rand (concl eq)])
+    cv_float_taylor_test_ws candle_cv_reflected_test_iabs;;
+
+let candle_cv_reflected_test_legacy =
+  cv_float_staged_product_sum_hi 8
+    candle_cv_reflected_test_monomials;;
+
+cv_staged_reflected_trace := Some print_endline;;
+
+let candle_cv_reflected_test_result =
+  cv_float_staged_product_sum_hi_reflected 8
+    candle_cv_reflected_test_monomials;;
+
+cv_staged_reflected_trace := None;;
+
+if hyp candle_cv_reflected_test_result <> [] ||
+   not (aconv (concl candle_cv_reflected_test_result)
+          (concl candle_cv_reflected_test_legacy)) then
+  failwith "reflected staged polynomial theorem mismatch";;
+
+print_endline "CANDLE_CV_FLOAT_STAGED_REFLECTED_OK";;
