@@ -7,7 +7,8 @@
 (* Kernel.compute-backed checker.                                           *)
 (* ======================================================================== *)
 
-needs "arith/cv_compute_float_staged_polynomial.hl";;
+needs "arith/cv_compute_float_staged_reflected.hl";;
+needs "arith/cv_compute_float_taylor.hl";;
 needs "verifier/m_verifier.hl";;
 
 module Cv_compute_m_taylor_bounds = struct
@@ -16,7 +17,56 @@ open Arith_float;;
 open M_taylor;;
 open M_verifier;;
 open Misc_vars;;
+open Cv_compute_float_taylor;;
 open Cv_compute_float_staged_polynomial;;
+open Cv_compute_float_staged_reflected;;
+
+(* Keep the ordinary Taylor source expression and transfer theorem, but put
+   the complete staged rounding-plan validity check behind Kernel.compute.
+   The earlier adapter accidentally called the exact-product prototype here;
+   besides being much slower, that bypassed the staged phase observer. *)
+let cv_taylor_first_staged_hi p ws dfs =
+  if length ws <> length dfs || ws = [] then
+    failwith "cv_taylor_first_staged_hi: malformed lists"
+  else
+    let iabs_eqs = map cv_taylor_float_iabs dfs in
+    let magnitudes = map (rand o concl) iabs_eqs in
+    let monomials = map2 (fun w magnitude -> [w;magnitude]) ws magnitudes in
+    let reflected =
+      cv_float_staged_product_sum_hi_reflected p monomials in
+    cv_taylor_transfer_bound iabs_eqs
+      (cv_taylor_first_lhs ws dfs) reflected;;
+
+let cv_taylor_second_staged_hi p ws dds =
+  if ws = [] || length ws <> length dds then
+    failwith "cv_taylor_second_staged_hi: malformed outer lists"
+  else
+    let rec build i remaining_ws remaining_dds =
+      match remaining_ws,remaining_dds with
+      | [],[] -> [],[]
+      | w :: ws_tail,row :: dds_tail ->
+          if length row <> i then
+            failwith "cv_taylor_second_staged_hi: non-triangular Hessian";
+          let diagonal = last row and off_diagonal = butlast row in
+          let diagonal_eq = cv_taylor_float_iabs diagonal in
+          let off_eqs = map cv_taylor_float_iabs off_diagonal in
+          let prefix,_ = chop_list (i - 1) ws in
+          let diagonal_monomial = [w;w;rand (concl diagonal_eq)] in
+          let off_monomials =
+            map2
+              (fun wj eq ->
+                [cv_taylor_two_float;w;wj;rand (concl eq)])
+              prefix off_eqs in
+          let tail_eqs,tail_monomials =
+            build (i + 1) ws_tail dds_tail in
+          (diagonal_eq :: (off_eqs @ tail_eqs)),
+          (diagonal_monomial :: (off_monomials @ tail_monomials))
+      | _ -> failwith "cv_taylor_second_staged_hi: malformed outer lists" in
+    let iabs_eqs,monomials = build 1 ws dds in
+    let reflected =
+      cv_float_staged_product_sum_hi_reflected p monomials in
+    cv_taylor_transfer_bound iabs_eqs
+      (cv_taylor_second_lhs ws dds) reflected;;
 
 let cv_eval_m_taylor_upper_bound n pp m_taylor_th =
   if n < 1 || n >= Array.length m_taylor_upper_array then
@@ -41,9 +91,9 @@ let cv_eval_m_taylor_upper_bound n pp m_taylor_th =
         y_var = mk_var ("y",type_of y_tm) and
         f_var = mk_var ("f",type_of f_tm) and
         domain_var = mk_var ("domain",type_of domain_tm) in
-    let d_th = cv_taylor_first_hi pp ws dfs in
+    let d_th = cv_taylor_first_staged_hi pp ws dfs in
     let b_tm = rand (concl d_th) in
-    let dd_th = cv_taylor_second_hi pp ws dds in
+    let dd_th = cv_taylor_second_staged_hi pp ws dds in
     let error_tm = rand (concl dd_th) in
     let ineq1_th =
       let ( * ),( + ) = float_mul_hi pp,add_ineq_hi pp in
