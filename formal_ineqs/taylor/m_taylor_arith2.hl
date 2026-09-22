@@ -33,7 +33,9 @@ open Misc_vars;;
 
 
 (**************************************)
-let mk_vars n name ty = map (fun i -> mk_var (name^string_of_int i, ty)) (1--n);;
+let mk_vars n prefix ty = map (fun i ->
+  let name = prefix ^ string_of_int i in
+  mk_var (name,ty)) (1--n);;
 
 
 let all_n_components2 n all_n_th =

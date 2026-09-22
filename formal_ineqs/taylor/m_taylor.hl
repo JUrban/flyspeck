@@ -14,6 +14,11 @@ needs "misc/misc_vars.hl";;
 needs "taylor/theory/taylor_interval-compiled.hl";;
 needs "taylor/theory/multivariate_taylor-compiled.hl";;
 
+(* Candle frontend grouping boundary: the preceding standalone loader calls
+   return module values.  Discard that result explicitly before beginning the
+   next module phrase.  This is semantically the same unit boundary as native
+   HOL Light's top-level phrase sequencing. *)
+let _ = ();;
 
 module M_taylor = struct
 
@@ -83,9 +88,13 @@ let x_vars_array = Array.init (max_dim + 1) (fun i -> mk_var(x_var_names.(i), re
     z_vars_array = Array.init (max_dim + 1) (fun i -> mk_var(z_var_names.(i), real_ty)) and
     w_vars_array = Array.init (max_dim + 1) (fun i -> mk_var(w_var_names.(i), real_ty));;
 
-let df_vars_array = Array.init (max_dim + 1) (fun i -> mk_var ("df"^(string_of_int i), real_pair_ty));;
+let df_vars_array = Array.init (max_dim + 1) (fun i ->
+  let name = "df" ^ string_of_int i in
+  mk_var (name,real_pair_ty));;
 let dd_vars_array = Array.init (max_dim + 1) (fun i ->
-   Array.init (max_dim + 1) (fun j -> mk_var ("dd"^(string_of_int i)^(string_of_int j), real_pair_ty)));;
+   Array.init (max_dim + 1) (fun j ->
+     let name = "dd" ^ string_of_int i ^ string_of_int j in
+     mk_var (name,real_pair_ty)));;
 
 let dest_vector = dest_list o rand;;
 
@@ -101,7 +110,9 @@ let mk_vector_list list =
 let el_thms_array =
   let el_tm = `EL : num->(A)list->A` in
   let gen0 n =
-    let e_list = mk_list (map (fun i -> mk_var ("e"^(string_of_int i), aty)) (1--n), aty) in
+    let e_list = mk_list (map (fun i ->
+      let name = "e" ^ string_of_int i in
+      mk_var (name,aty)) (1--n), aty) in
     let el0_th = REWRITE_CONV[EL; HD] (mk_binop el_tm `0` e_list) in
       Array.make n el0_th in
   let array = Array.init (max_dim + 1) gen0 in
