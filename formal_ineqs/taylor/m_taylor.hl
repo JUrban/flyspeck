@@ -316,8 +316,17 @@ let dest_m_cell_domain domain_tm =
 
 (**************************************************)
 
-(* Given a variable of the type `:real^N`, returns the number N *)
-let get_dim = int_of_string o fst o dest_type o hd o tl o snd o dest_type o type_of;;
+(* Given a variable of the type `:real^N`, returns the supported number N.
+   The historical finite-type representation is not stable across the HOL
+   implementation used by Candle.  The verifier already owns the authoritative
+   table of supported vector types, so use that table directly. *)
+let get_dim tm =
+  let ty = type_of tm in
+  let rec find n =
+    if n > max_dim then failwith "get_dim: unsupported vector type"
+    else if ty = n_vector_type_array.(n) then n
+    else find (n + 1) in
+  find 1;;
 
 
 (**********************)
