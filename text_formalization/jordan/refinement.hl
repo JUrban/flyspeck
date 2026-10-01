@@ -38,7 +38,11 @@ let LABEL_ALL_TAC:tactic =
   fun gl  ->  
     let (asl,w) = dest_goal gl in
     let aslp = ref asl in
-    (for i=0 to ((length asl)-1) do (aslp := update_label i !aslp) done;
+    let n = length asl in
+    let rec update_all i =
+      if i = n then ()
+      else (aslp := update_label i !aslp; update_all (i+1)) in
+    (update_all 0;
     (ALL_TAC (mk_goal(!aslp,w))));;
 
 (* global_var *)
