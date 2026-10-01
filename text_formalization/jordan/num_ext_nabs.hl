@@ -15,7 +15,7 @@ module Num_ext_nabs = struct
 
 open Tactics_jordan;;
 
-Parse_ext_override_interface.unambiguous_interface();;
+let _ = Parse_ext_override_interface.unambiguous_interface();;
 
 let INT_NUM = prove(`!u. (integer (real_of_num u))`,
         (REWRITE_TAC[is_int]) THEN GEN_TAC THEN

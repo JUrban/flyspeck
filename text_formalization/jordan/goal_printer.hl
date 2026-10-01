@@ -18,8 +18,8 @@ open Hash_term;;
 open Lib_ext;;
 (* This file is in severe need of a rewrite! *)
 
-Parse_ext_override_interface.unambiguous_interface();;
-Parse_ext_override_interface.prioritize_real();;
+let _ = Parse_ext_override_interface.unambiguous_interface();;
+let _ = Parse_ext_override_interface.prioritize_real();;
 
 (*
 

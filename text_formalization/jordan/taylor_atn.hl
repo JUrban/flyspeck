@@ -249,7 +249,7 @@ CONV_TAC REAL_FIELD;
 
 (* complex taylor for atn *)
 
-prioritize_complex();;
+let _ = prioritize_complex();;
 
 let id1 = COMPLEX_RING `inv (Cx (&1) + z pow 2)   = (inv (Cx (&2))) * ( ( inv (Cx (&1) + z pow 2) * (Cx (&1) - ii *z)) +  (inv (Cx (&1) + z pow 2)) * ( (Cx (&1) + ii * z)))`;;
 
@@ -818,7 +818,7 @@ let atn_bounds_anti = prove_by_refinement(
   ]);;
   (* }}} *)
 
-prioritize_real();;
+let _ = prioritize_real();;
 
 let atn_bounds = prove_by_refinement(
   `!x y. abs(atn x - atn y) <= abs(x-y)`,

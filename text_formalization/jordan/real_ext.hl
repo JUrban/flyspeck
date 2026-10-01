@@ -23,8 +23,8 @@ open Parse_ext_override_interface;;
 (* Propagation of =EQUAL=  *)
 (* ------------------------------------------------------------------ *)
 
-unambiguous_interface();;
-prioritize_num();;
+let _ = unambiguous_interface();;
+let _ = prioritize_num();;
 
 let REAL_LE = REAL_OF_NUM_LE;;
 
@@ -301,6 +301,6 @@ let REAL_RMUL_TAC t =
    THENL [DISCH_TAC; ALL_TAC];;
 
 
-pop_priority();;
+let _ = pop_priority();;
 
 end;;
