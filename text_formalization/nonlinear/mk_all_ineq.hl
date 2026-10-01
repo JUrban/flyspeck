@@ -381,9 +381,36 @@ let _ =
   filter  (fun (_,t) -> t = TRUTH) prep_nonlinear_thml = [] ||
    failwith "failed prep cases";;
 
+(* The 7,479 Iarg_leaf tokens in break_case_log.hl are a source inventory,
+   not the number traversed here: all_idv also contains cases that deliberately
+   use get_iarg's default leaf, and the log contains a duplicate label.  Derive
+   the traversal contract from the exact authenticated selected iargs instead
+   of conflating those two counts. *)
+let rec candle_mk_all_iarg_leaf_count = function
+    Iarg_bisect (_,left,right) ->
+      candle_mk_all_iarg_leaf_count left +
+      candle_mk_all_iarg_leaf_count right
+  | Iarg_leaf _ -> 1
+  | Iarg_facet (_,_,_,residual) ->
+      candle_mk_all_iarg_leaf_count residual;;
+
+let candle_mk_all_expected_iarg_leaf_visits =
+  List.fold_left
+    (fun total idv ->
+       total +
+       candle_mk_all_iarg_leaf_count (Break_case_exec.get_iarg idv))
+    0 Break_case_exec.all_idv;;
+
 let _ =
-  !Break_case_exec.candle_nonlinear_iarg_leaf_visits = 7479 ||
+  candle_mk_all_expected_iarg_leaf_visits > 0 &&
+  !Break_case_exec.candle_nonlinear_iarg_leaf_visits =
+    candle_mk_all_expected_iarg_leaf_visits ||
   failwith "nonlinear serialized leaf coverage mismatch";;
+
+let _ =
+  !Serialization.nonlinear_legacy_import_attempts = 23242 &&
+  !Serialization.nonlinear_legacy_import_successes = 23242 ||
+  failwith "nonlinear legacy import coverage mismatch";;
 
 let prep_thms = map (fun s -> assoc s prep_nonlinear_thml) 
   (map (fun t -> t.idv) !Prep.prep_ineqs);;

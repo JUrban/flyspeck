@@ -17,10 +17,7 @@ needs "general/theorem_digest.hl";;
 needs "general/theorem_nonlinear_digest.hl";;
 needs "general/prove_by_refinement.hl";;
 
-let _ = if Str.string_match (Str.regexp "Ocaml 4.") (ocaml_version()) 0 then 
-  needs "general/update_database_400.ml"
-else
-  needs "general/update_database_310.ml";;
+#flyspeck_loadt "general/update_database_400.ml";;
 
 (* #load "str.cma";; *)
 
@@ -31,12 +28,83 @@ module Serialization = struct
 
 (* string comparison function *)
 
-module  String_compare : Set.OrderedType with type t = string = struct
-  type t = string;;
-  let  compare (t1:string) (t2:string) = Stdlib.compare (t1) (t2);;
+module St = struct
+  type elt = string;;
+  type t =
+      Empty
+    | Node of t * string * t;;
+
+  let rec mem value values =
+    match values with
+      Empty -> false
+    | Node(left,current,right) ->
+        let ordering = String.compare value current in
+        if ordering = 0 then true
+        else if ordering < 0 then mem value left
+        else mem value right;;
+
+  let rec build count values =
+    if count = 0 then (Empty,values)
+    else
+      let left_count = count / 2 in
+      let right_count = count - left_count - 1 in
+      let (left,after_left) = build left_count values in
+      match after_left with
+        [] -> failwith "string-set construction underflow"
+      | current::after_current ->
+          let (right,after_right) = build right_count after_current in
+            (Node(left,current,right),after_right);;
+
+  let of_list values =
+    let sorted =
+      sort (fun left right -> String.compare left right < 0) values in
+    let (tree,remaining) = build (List.length sorted) sorted in
+      if remaining = [] then tree
+      else failwith "string-set construction overflow";;
 end;;
 
-module St = Set.Make(String_compare);;
+module Nonlinear_import_map = struct
+  type t =
+      Empty
+    | Node of t * string * string * string * t;;
+
+  let rec check_sorted previous = function
+      [] -> ()
+    | (label,_,_)::rest ->
+        let _ =
+          match previous with
+            None -> ()
+          | Some previous_label ->
+              if String.compare previous_label label < 0 then ()
+              else failwith "nonlinear import labels are not strictly sorted" in
+          check_sorted (Some label) rest;;
+
+  let rec build count values =
+    if count = 0 then (Empty,values)
+    else
+      let left_count = count / 2 in
+      let right_count = count - left_count - 1 in
+      let (left,after_left) = build left_count values in
+      match after_left with
+        [] -> failwith "nonlinear import map construction underflow"
+      | (label,history_digest,surface_digest)::after_current ->
+          let (right,after_right) = build right_count after_current in
+            (Node(left,label,history_digest,surface_digest,right),after_right);;
+
+  let of_sorted_list values =
+    let _ = check_sorted None values in
+    let (tree,remaining) = build (List.length values) values in
+      if remaining = [] then tree
+      else failwith "nonlinear import map construction overflow";;
+
+  let rec find label = function
+      Empty -> failwith ("nonlinear import label not found " ^ label)
+    | Node(left,current,history_digest,surface_digest,right) ->
+        let ordering = String.compare label current in
+        if ordering = 0 then (history_digest,surface_digest)
+        else if ordering < 0 then find label left
+        else find label right;;
+end;;
 
 (* remove duplicate entrie from a list *)
 
@@ -76,7 +144,8 @@ let canonize_frees_in_thm th =
 
 let mk_b_var base (i, v) = 
   let (_,ty) = dest_var v in
-  let b = mk_var(base^(string_of_int i),ty) in
+  let name = base^(string_of_int i) in
+  let b = mk_var(name,ty) in
     b;;
 
 (* bound variables in a term are renamed b0, b1, b2, ... *)
@@ -209,7 +278,7 @@ All theorems that are imported are marked with an assumption
  *)
 (* ********************************************************************** *)
 
-let bool_ty = Hol.bool_ty;;
+let bool_ty = bool_ty;;
 
 let deserial = "deserialization";;
 
@@ -360,7 +429,7 @@ let get_simple_table_term =
     let _ = if (k>0) then len_type_definitions:= List.length !the_type_definitions in
       () in
   let add_table_term () = 
-    let hd = Hol.definitions() in
+    let hd = definitions() in
     let n = List.length hd in
     let k = n - !len_definitions in
     let _ = 
@@ -380,13 +449,13 @@ let get_simple_table_term =
 let assocs s xl = 
   try assoc s xl with Failure _ -> failwith s;;
 
-let hash2 = Hashtbl.create 2000;;
+let hash2 : (string, (string * thm) list) Hashtbl.t = Hashtbl.create 2000;;
 
 Hashtbl.clear hash2;;
 
 let rec get_history_thm_rec2 ty_ignore tm_ignore (d,th)  =
   try Hashtbl.find hash2 d with  | Not_found ->
-    let sort_uniq = uniq o (sort (fun a b -> fst a < fst b)) in
+    let sort_uniq = uniq o (sort (fun a b -> String.compare (fst a) (fst b) < 0)) in
     let ty = subtract (type_constants_in_thm th) ty_ignore in
     let tm = subtract (get_term_constants_in_thm th) tm_ignore in
 (*    let t1 = map (fun t -> assocs t simple_table_typ) ty in *)
@@ -399,7 +468,7 @@ let rec get_history_thm_rec2 ty_ignore tm_ignore (d,th)  =
 	Failure s -> (report (string_of_thm (snd t1)); failwith s) in
     let f = List.flatten (map try_history ts) in
     let f1 = (d,th) :: ts @ f in
-    let f' = uniq  (sort (fun a b -> fst a < fst b) f1) in
+    let f' = uniq  (sort (fun a b -> String.compare (fst a) (fst b) < 0) f1) in
     let _ = Hashtbl.add hash2 d f' in
       f';;
 
@@ -418,7 +487,7 @@ let get_history_thm1 =
   let ty_ignore = ["bool";"fun";"ind"] in
   let tm_ignore = ["=";"fun";"@";deserial] in
   let mk th = let c = canonize_thm th in (simple_digest_thm c),c in
-  let sort_uniq = uniq o (sort (fun a b -> fst a < fst b)) in
+  let sort_uniq = uniq o (sort (fun a b -> String.compare (fst a) (fst b) < 0)) in
   let axiom_reduced = filter (fun t -> not(is_deserial_axiom t)  ) (axioms()) in
   let d_axiom = map mk (axiom_reduced) in
   let ax_history = sort_uniq (List.flatten 
@@ -434,7 +503,7 @@ let get_history_thm1 =
 let full_digest_thm th = 
   let history =  (get_history_thm1) th in
   let h2 =  (map fst) history in
-  let h4 =  (String.concat " " o nub o  (sort (<))) h2 in
+  let h4 =  (String.concat " " o nub o  (sort (fun a b -> String.compare a b < 0))) h2 in
     Digest.to_hex (Digest.string h4);;
 
 full_digest_thm ETA_AX =  "63e9b5b016229a78bb720593f38b0b3e" 
@@ -487,16 +556,14 @@ let save_stringarray filename xs head sep tail =
   let _ = close_out oc in
     ();;
 
-let digest_file = Filename.temp_file "digest" ".hl";; 
+let digest_file =
+  "CANDLE_FLYSPECK_DISABLED_THEOREM_DIGEST_OUTPUT";;
 
-let save_all digest_list = 
-  let head = "module Theorem_digest = struct\n\n let digest_list_extern = [\n" in
-  let sep = ";\n" in
-  let tail = "];;\n\nend;;" in
-    save_stringarray digest_file digest_list head sep tail;;
+let save_all _ =
+  failwith "Candle Flyspeck theorem-digest output is disabled";;
 
-let load_digest_file() = 
-  needs digest_file;;
+let load_digest_file () =
+  failwith "Candle Flyspeck theorem-digest reload is disabled";;
 
 (*
 save_all();;
@@ -508,7 +575,7 @@ let dd1 = subtract Theorem_digest.digest_list_extern digest_list;;
 map (fun t -> assoc t hashes2) dd1;;
 *)
 
-let thm_list = ref [];;
+let thm_list : thm list ref = ref [];;
 
 let add_thm th = 
   let _ = thm_list := th :: !thm_list in
@@ -516,18 +583,12 @@ let add_thm th =
 
 (* Export all theorems in the HOL Light database *)
 
-let save_all_theorems() = 
-  let _ = update_database() in
-  let tt = (map snd !theorems) @ !thm_list in
-  let tt2 = uniq (sort (<) 
-		(Theorem_digest.digest_list_extern @ digest_thms tt)) in
-  let _ =   save_all tt2 in
-    ();;
+let save_all_theorems () =
+  failwith "Candle Flyspeck theorem-database export is disabled";;
 
 
 let set_of_string sl = 
-  let acc = St.empty in
-    List.fold_right St.add sl acc;;
+  St.of_list sl;;
 
 (* ********************************************************************** *)
 (* deserialization axiom *)
@@ -568,7 +629,7 @@ This module cannot be reloaded.
 
 let mk_local_inconsistency() = 
   let pseudo_thm = prove (`(\(x:bool). x) T`,MESON_TAC[]) in
-  let abs_rep,rep_abs = Hol.new_basic_type_definition 
+  let abs_rep,rep_abs = new_basic_type_definition
     "extern_bool" ("serialize","deserialize") (pseudo_thm) in
   let rep_abs' = MESON[rep_abs] `~(!r. deserialize (serialize r) = r)` in
   let deserialize = new_basic_definition (mk_eq (deserial_var,snd (dest_comb (concl rep_abs')))) in
@@ -578,27 +639,63 @@ let mk_local_inconsistency() =
 (* XX. need to rework to allow theorems with hypotheses. *)
 (* April 27, 2016: we have temporarily removed the list Theorem_digest.digest_list_extern *)
 
-let mk_deserialize_thm = 
+(* The ordinary importer below continues to authenticate the complete current
+   theorem history.  The separate nonlinear compatibility importer is only
+   for the 23,242 archived leaves whose current propositions were exhaustively
+   matched to the historical verifier output.  It requires both the original
+   approved history digest and the exact label-bound proposition digest. *)
+
+let nonlinear_legacy_import_attempts = ref 0;;
+let nonlinear_legacy_import_successes = ref 0;;
+
+let mk_deserialize_thm,mk_nonlinear_legacy_deserialize_thm =
+  let nonlinear_records = Theorem_nonlinear_digest.digest_records in
+  let _ =
+    if Theorem_nonlinear_digest.nonlinear_import_manifest_version = 1 &&
+       Theorem_nonlinear_digest.nonlinear_import_record_count = 23242 &&
+       List.length nonlinear_records = 23242
+    then ()
+    else failwith "nonlinear import manifest contract mismatch" in
   let digest_set = set_of_string 
     ((* Theorem_digest.digest_list_extern @ *) Theorem_nonlinear_digest.digest_list_extern) in
+  let nonlinear_imports =
+    Nonlinear_import_map.of_sorted_list nonlinear_records in
   let rvar = `r:bool` in
     (* The scope of falsehood is restricted here: *)
   let (ok,falsehood_thm) = 
     try (true,mk_local_inconsistency()) with _ -> (false,TRUTH) in
   let mk_dthm t = INST [(t,rvar)] falsehood_thm in
-    fun t -> 
+  let mk_full_history_import t =
       let _ = ok || failwith "mk_deserialization failed" in
       let th = mk_dthm t in 
       let d = try full_digest_thm th with Not_found -> failwith ("digest failed "^string_of_thm th) in
       let _ = St.mem d digest_set || failwith ("theorem digest not found "^d) in
-	th;;
+	th in
+  let mk_nonlinear_import label t =
+    let _ = nonlinear_legacy_import_attempts :=
+      !nonlinear_legacy_import_attempts + 1 in
+    let _ = ok || failwith "mk_deserialization failed" in
+    let (history_digest,expected_surface_digest) =
+      Nonlinear_import_map.find label nonlinear_imports in
+    let _ =
+      St.mem history_digest digest_set ||
+      failwith ("nonlinear theorem history digest not found " ^ history_digest) in
+    let th = mk_dthm t in
+    let observed_surface_digest = simple_digest_thm th in
+    let _ =
+      observed_surface_digest = expected_surface_digest ||
+      failwith ("nonlinear theorem surface digest mismatch " ^ label) in
+    let _ = nonlinear_legacy_import_successes :=
+      !nonlinear_legacy_import_successes + 1 in
+      th in
+    (mk_full_history_import,mk_nonlinear_import);;
 
 let deserialization_axiom = 
   let t = mk_const (deserial,[]) in
     fun () ->
       try
 	find (fun u -> t = concl u && hyp u = []) (axioms())
-      with _ -> Hol.new_axiom t;;
+      with _ -> Kernel.new_axiom t;;
 
 let has_deserialization_axiom =
   let t = mk_const (deserial,[]) in
@@ -624,6 +721,12 @@ let mk_ser_thm t =
   let _ = !use_serialization || failwith "mk_ser_thm" in
   let d = deserialization_axiom() in
     PROVE_HYP d (mk_deserialize_thm t);;
+
+let mk_nonlinear_legacy_ser_thm label t =
+  let _ = !use_serialization || failwith "mk_nonlinear_legacy_ser_thm" in
+  let th = mk_nonlinear_legacy_deserialize_thm label t in
+  let d = deserialization_axiom() in
+    PROVE_HYP d th;;
 
 (* ********************************************************************** *)
 (* The remaining functions in the module are used to

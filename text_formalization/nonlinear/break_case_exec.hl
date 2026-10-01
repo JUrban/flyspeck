@@ -1768,9 +1768,16 @@ let prove_iargs_cases tm iarg =
   let pthm = prove_iargs (rhs1) iarg in
     EQ_MP (SYM eq1) pthm;;
 
-let prove_serialize_processed_idq t iarg = 
+let rec candle_nonlinear_import_leaves s i = function
+    [] -> []
+  | tm::rest ->
+      let label = "(" ^ s ^ "," ^ string_of_int i ^ "):" in
+      let th = Serialization.mk_nonlinear_legacy_ser_thm label tm in
+        th :: candle_nonlinear_import_leaves s (i + 1) rest;;
+
+let prove_serialize_processed_idq s t iarg =
   let cl =  mk_case_list t iarg in
-  let cthms = map Serialization.mk_ser_thm cl in  (* serialization used here *)
+  let cthms = candle_nonlinear_import_leaves s 0 cl in
   let athm =  prove_iargs_cases t iarg in
   let rthm = itlist (PROVE_HYP) cthms athm in
   let vthm = REWRITE_RULE 
@@ -1781,7 +1788,7 @@ let prove_serialize_processed_idq t iarg =
 let SERIAL_TAC s gl = 
   let t = goal_concl gl in
   let iarg = get_iarg s in 
-  let thm = prove_serialize_processed_idq t iarg in
+  let thm = prove_serialize_processed_idq s t iarg in
     ACCEPT_TAC thm gl;;
 
 let prove_serialized_idv s = 
