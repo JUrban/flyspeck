@@ -114,7 +114,7 @@ needs "general/hol-library.hl";;
 #flyspeck_loadt "general/print_types.hl";;
 
 #flyspeck_loadt "general/hol_pervasives.hl";;
-needs "general/prove_by_refinement.hl";;
+#flyspeck_loadt "general/prove_by_refinement.hl";;
 
 needs "build/build.hl";;
 
