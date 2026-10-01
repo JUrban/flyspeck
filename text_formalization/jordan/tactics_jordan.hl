@@ -18,7 +18,7 @@ open Lib_ext;;
 (* MORE RECENT ADDITIONS *)
 (* ------------------------------------------------------------------ *)
 
-Parse_ext_override_interface.unambiguous_interface();;
+let _ = Parse_ext_override_interface.unambiguous_interface();;
 
 
 
@@ -179,8 +179,11 @@ let pthm = prove_by_refinement(
   `(\ (x:A) .T) (@(x:A). T)`,
   [BETA_TAC]);;
 
-let abbrev_type ty s = let (a,b) = new_basic_type_definition s
-   ("mk_"^s,"dest_"^s)
+let abbrev_type ty s =
+   let absname = "mk_"^s in
+   let repname = "dest_"^s in
+   let (a,b) = new_basic_type_definition s
+   (absname,repname)
    (INST_TYPE [ty,`:A`] pthm) in
    let abst t = list_mk_forall ((frees t), t) in
    let a' = abst (concl a) in
@@ -253,7 +256,7 @@ let relabel_bound_conv tm =
  let relabel_bound tm =
    match tm with
     | Abs(x,t) ->
-        let avoids = filter ((!=) x) (vars_and_constants tm []) in
+        let avoids = filter (fun y -> not (y = x)) (vars_and_constants tm []) in
         let x' = mk_primed_var avoids x in
         if (x=x') then failwith "relabel_bound" else (alpha x' tm)
     | _ -> failwith "relabel_bound" in
@@ -300,7 +303,7 @@ let select_thm select_fn select_exist =
              SELECT_AX);;
 
 (* example *)
-select_thm
+let _ = select_thm
     `\m. (X:num->bool) m /\ (!n. X n ==> m <=| n)` `n:num`;;
 
 let SELECT_EXIST = prove_by_refinement(
@@ -526,7 +529,7 @@ let new_factor_order2 t1 t2 =
 
 let rec mon_sz tm =
   if is_var tm then
-    num (Hashtbl.hash tm)
+    num (Hash_term.hash_of_term tm)
   else
   try let (a,b) = dest_binop `( *. )` tm in
     (mon_sz a) */ (mon_sz b)
@@ -1119,10 +1122,10 @@ let dropq_conv  =
 
 
 (* Examples : *)
-dropq_conv "u" `!P Q R . (?(u:B). (?(x:A). (u = P x) /\ (Q x)) /\ (R u))`;;
-dropq_conv "t" `!P Q R. (!(t:B). (?(x:A). P x /\ (t = Q x)) ==> R t)`;;
+let _ = dropq_conv "u" `!P Q R . (?(u:B). (?(x:A). (u = P x) /\ (Q x)) /\ (R u))`;;
+let _ = dropq_conv "t" `!P Q R. (!(t:B). (?(x:A). P x /\ (t = Q x)) ==> R t)`;;
 
-dropq_conv "u" `?u v.
+let _ = dropq_conv "u" `?u v.
      ((t * (a + &1) + (&1 - t) *a = u) /\
       (t * (b + &0) + (&1 - t) * b = v)) /\
      a < u /\
