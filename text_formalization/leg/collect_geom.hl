@@ -49,7 +49,7 @@ These should be reconciled with main flyspeck library
 
   let BY = Hales_tactic.BY;;
 
-prioritize_real();;
+let _ = prioritize_real();;
 
 (* dist3 is deprecated *) 
 
@@ -717,7 +717,7 @@ let MAX_REAL3_LESS_EX = prove(`! x y z a. max_real3 x y z <= a <=> x <= a /\
 y <= a /\ z <= a `, REWRITE_TAC[max_real3; MAX_REAL_LESS_EX] THEN MESON_TAC[]);;
 
 
-MESON[]` (!x y z.
+let _ = MESON[]` (!x y z.
           (P x y z <=> P y x z) /\
           (P x y z <=> P x z y) /\
           (Q x y z <=> Q y x z) /\
