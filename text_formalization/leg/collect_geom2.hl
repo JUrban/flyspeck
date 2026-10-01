@@ -867,7 +867,7 @@ SET_RULE ` ( a INTER b = {} ) <=> (! x. ~ (x IN a /\ x IN b )) `;;
 
 (* ================== *)
 
-MATCH_MP (SPEC_ALL AFFINE_HULL_FINITE) (MESON[FINITE_RULES] ` FINITE {(a:real^N),b,c} `) ;;
+let _ = MATCH_MP (SPEC_ALL AFFINE_HULL_FINITE) (MESON[FINITE_RULES] ` FINITE {(a:real^N),b,c} `) ;;
 
 let PLANE_IMP_AFFINE = prove(`plane (p:real^N -> bool ) ==> affine p `, 
 MESON_TAC[plane; AFFINE_AFFINE_HULL]);;
@@ -1325,7 +1325,7 @@ REWRITE_TAC[AFFINE_HULL_4; IN_ELIM_THM; VECTOR_ADD_LDISTRIB;
 
 (* VBVYGGT , le 85 *)
 
-MESON[POW_2_SQRT; DIST_POS_LE]` dist (x,y) pow 2 = r ==> dist (x,y) = sqrt ( r ) `;;
+let _ = MESON[POW_2_SQRT; DIST_POS_LE]` dist (x,y) pow 2 = r ==> dist (x,y) = sqrt ( r ) `;;
 
 (* LEMMA 85 *)
 let VBVYGGT = prove(`!(v1:real^3) v2 v3 v4.
