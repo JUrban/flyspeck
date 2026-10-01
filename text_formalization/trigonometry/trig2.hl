@@ -2913,7 +2913,7 @@ let real_itv = new_definition ` real_itv a b  = { x | a <= x /\ x < b } `;;
 let tri_itv = new_definition ` tri_itv x <=> ( x IN real_itv ( &0 ) ( &2 * pi )) `;;
 
 
-parse_as_infix("polar_lt",(12,"right"));;
+let _ = parse_as_infix("polar_lt",(12,"right"));;
 
 
 let polar_lt = new_definition 
@@ -2928,13 +2928,13 @@ let polar_lt = new_definition
               ==> aa < ab \/ aa = ab /\ ra < rb) `;;
 
 
-parse_as_infix("polar_le",(12,"right"));;
+let _ = parse_as_infix("polar_le",(12,"right"));;
 
 let polar_le = new_definition 
 ` a polar_le b <=> a polar_lt b \/ a = b `;;
 
 
-parse_as_infix("polar_cycle_on",(12,"right"));;
+let _ = parse_as_infix("polar_cycle_on",(12,"right"));;
 
 let polar_cycle_on = new_definition
 ` f polar_cycle_on (W: real^2 -> bool ) <=>
@@ -4233,7 +4233,7 @@ SIMP_TAC[] THEN
 ASM_MESON_TAC[TWO_NOT_EQ_VECS_SUM_ARG_DIFF_TWO_PI]);;
 
 
-parse_as_infix("re_eqvl",(12,"right"));;
+let _ = parse_as_infix("re_eqvl",(12,"right"));;
 
 let re_eqvl = new_definition ` a re_eqvl (b:real)
  <=> (? t. &0 < t /\ a = t * b )`;;

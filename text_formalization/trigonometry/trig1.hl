@@ -21,7 +21,7 @@ module  Trigonometry1 = struct
   let arclength = Sphere.arclength;; 
   let ups_x = Sphere.ups_x;;
 
-prioritize_real();;
+let _ = prioritize_real();;
 
 (* JMR: Changed `polar_angle (FST u) (SND u)` to `Arg(complex u)` *)
 
