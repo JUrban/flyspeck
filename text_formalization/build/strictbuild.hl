@@ -83,25 +83,20 @@ let flyspeckpath s = Filename.concat flyspeck_dir s;;
 (* boolean valued versions of Harrison's load files that return false
    if load was not a success *)
 
-let use_file_b s =
-  if not(Sys.file_exists s) 
-  then (report ("File not found "^s); false)
-  else 
-    (Toploop.use_file Format.std_formatter s) || 
-      (Format.print_string("Error in included file "^s);
-       Format.print_newline(); false);;
+let use_file_b (s:string) : bool =
+  failwith ("Candle Flyspeck: dynamic use_file_b is disabled by the static manifest: "^s);;
 
 let load_on_path_b p s =
   let s' = file_on_path p s in
-  let fileid = (Filename.basename s',Digest.file s') in
+  let fileid = (Filename.basename s',Digest.to_hex (Digest.file s')) in
     (use_file_b s' && (loaded_files := fileid::(!loaded_files);true));;
 
 let loadb s = load_on_path_b (!load_path) s;;
 
 
 (* debugging *)
-loadt (flyspeckpath "general/parser_verbose.hl");;
-loadt (flyspeckpath "general/debug.hl");;
+#flyspeck_loadt "general/parser_verbose.hl";;
+#flyspeck_loadt "general/debug.hl";;
 (* Debug.set_verbose_parsing();; *)
 
 
@@ -116,29 +111,22 @@ needs "Library/rstc.ml";;
 needs "Rqe/num_calc_simp.ml";;  
 needs "general/hol-library.hl";;
 
-needs "general/print_types.hl";;
+#flyspeck_loadt "general/print_types.hl";;
 
-needs "general/hol_pervasives.hl";;
+#flyspeck_loadt "general/hol_pervasives.hl";;
 needs "general/prove_by_refinement.hl";;
 
 needs "build/build.hl";;
 
 let needb s =
   let s' = file_on_path (!load_path) s in
-  let fileid = (Filename.basename s',Digest.file s') in
+  let fileid = (Filename.basename s',Digest.to_hex (Digest.file s')) in
     if List.mem fileid (!loaded_files)
     then (Format.print_string("File \""^s^"\" already loaded\n");true) 
     else loadb s;;
 
-let needs s =
-  let s' = file_on_path (!load_path) s in
-  let fileid = (Filename.basename s',Digest.file s') in
-  if List.mem fileid (!loaded_files)
-  then Format.print_string("File \""^s^"\" already loaded\n") 
-  else 
-    let _ = loadt s in
-    let _ = Format.print_string("File \""^s'^"\" -successfully loaded\n") in
-      ();;
+let needs (s:string) : unit =
+  failwith ("Candle Flyspeck: dynamic strictbuild needs is disabled by the static manifest: "^s);;
 
 
 let (prove,
@@ -164,13 +152,14 @@ let () =
 
 needs "Multivariate/flyspeck.ml";; (* load before state manager *)
 
-loadt (flyspeckpath "general/state_manager.hl");;
-let reneeds s = loadt (flyspeckpath s);;
+#flyspeck_loadt "general/state_manager.hl";;
+let reneeds (s:string) : unit =
+  failwith ("Candle Flyspeck: dynamic strictbuild reneeds is disabled by the static manifest: "^s);;
 let rflyspeck_needs = reneeds;;
 
 let flyspeckid s = 
   let s' = file_on_path (!load_path) (flyspeckpath s) in
-    (Filename.basename s',Digest.file s');;
+    (Filename.basename s',Digest.to_hex (Digest.file s'));;
 
 
 
@@ -241,12 +230,8 @@ let define = Debug.define;;
 (*  By default, the project will generate
     the main statement.  To do more, call one of the given options. *)
 
-let build_and_report() = 
-  let s = try
-    (let _ = map flyspeck_needs Build.build_sequence_main_statement in  "full load completed")
-  with Failure t -> t  in
-  let oc = open_out_gen [Open_append;Open_text] 436 (flyspeckpath "logs/log.txt") in
-  (Stdlib.output_string oc (build_report s); close_out oc);;
+let build_and_report () : unit =
+  failwith "Candle Flyspeck: dynamic strictbuild build_and_report is disabled by the static manifest";;
 
 let do_build build_list = 
   let s = try
