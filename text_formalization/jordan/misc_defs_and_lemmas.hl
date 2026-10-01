@@ -28,7 +28,7 @@ let prove_by_refinement = Refinement.enhanced_prove_by_refinement true ALL_TAC;;
 
 let LABEL_ALL_TAC = Refinement.LABEL_ALL_TAC;;
 
-unambiguous_interface();;
+let _ = unambiguous_interface();;
 
 
 let dirac_delta = new_definition `dirac_delta i = 
@@ -362,9 +362,9 @@ let NUM2_COUNTABLE = prove_by_refinement(
   REPEAT (DISCH_THEN (CHOOSE_THEN MP_TAC));
   DISCH_THEN (fun t->REWRITE_TAC[t]);
   REWRITE_TAC[IN_UNIV];
-  SUBGOAL_MP_TAC `?t. t = x'+|y'`;
+  SUBGOAL_MP_TAC `?t. t = x+|y'`;
   MESON_TAC[];
-  SPEC_TAC (`x':num`,`a:num`);
+  SPEC_TAC (`x:num`,`a:num`);
   SPEC_TAC (`y':num`,`b:num`);
   CONV_TAC (quant_left_CONV "t");
   CONV_TAC (quant_left_CONV "t");
@@ -734,6 +734,6 @@ let part8 = new_definition(`part8 (u:A#B#C#D#E#F#G#H#I#J) =
 
 
 
-pop_priority();;
+let _ = pop_priority();;
 
 end;;

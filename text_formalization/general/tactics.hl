@@ -41,7 +41,7 @@ let select_thm select_fn select_exist =
              SELECT_AX);;
 
 (* example *)
-select_thm
+let _ = select_thm
     `\m. (X:num->bool) m /\ (!n. X n ==> m <= n)` `n:num`;;
 
 let SELECT_EXIST = prove_by_refinement(
