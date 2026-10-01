@@ -34,8 +34,8 @@ open Refinement;;
 open Tactics_jordan;;
 open Taylor_atn;;
 
-Parse_ext_override_interface.unambiguous_interface();;
-Parse_ext_override_interface.prioritize_real();;
+let _ = Parse_ext_override_interface.unambiguous_interface();;
+let _ = Parse_ext_override_interface.prioritize_real();;
 
 (* Three types of error:
      Insufficient precision: the inequality might be true but there is not enough
@@ -72,7 +72,7 @@ let interval_eps =
 let mk_interval a b ex =
    mk_comb(mk_comb (mk_comb (`interval_eps`,a),b),ex);;
 
-add_test("mk_interval",
+let _ = add_test("mk_interval",
    mk_interval `#3` `#4` `#1` = `interval_eps #3 #4 #1`);;
 
 let dest_interval intv =
@@ -109,7 +109,7 @@ let (mk_int:Num.num -> term) =
     try (if (sgn<0) then mk_comb (`int_neg`,r) else r) with
         Failure _ -> failwith ("dest_int "^(string_of_num a));;
 
-add_test("mk_int",
+let _ = add_test("mk_int",
    (mk_int (num (-1443)) = `int_neg (int_of_num 1443)`) &&
    (mk_int (num 37) = `(int_of_num 37)`));;
 
@@ -117,7 +117,7 @@ add_test("mk_int",
 
 let split_ratio:Num.num -> Num.num*Num.num = numdom;;
 
-add_test("split_ratio",
+let _ = add_test("split_ratio",
    let (a,b) = split_ratio ((num 4)//(num 20)) in
    (a =/ (num 1)) && (b =/ (num 5)));;
 
@@ -134,7 +134,7 @@ let (factor_C:int -> Num.num -> Num.num*Num.num) =
   if ((Num.is_integer_num r)&& not((Num.sign_num r) = 0)) then
     divC (r,(num 0)) else failwith "factor_C";;
 
-add_test("factor_C",
+let _ = add_test("factor_C",
    (factor_C 2 (num (4096+32)) = (num 129,num 5)) &&
    (factor_C 10 (num (5000)) = (num 5,num 3)) &&
    (cannot (factor_C 2) ((num 50)//(num 3))));;
@@ -146,10 +146,10 @@ let (dest_float:term -> Num.num) =
     let (a,b) = dest_binop `float` f in
     (dest_int a)*/ ((num 2) **/ (dest_int b));;
 
-add_test("dest_float",
+let _ = add_test("dest_float",
    dest_float `float (int_of_num 3) (int_of_num 17)` = (num 393216));;
 
-add_test("dest_float2", (* must express as numeral first *)
+let _ = add_test("dest_float2", (* must express as numeral first *)
    cannot dest_float `float ((int_of_num 3)+:(int_of_num 1)) (int_of_num 17)`);;
 
 (* ------------------------------------------------------------------ *)
@@ -164,16 +164,16 @@ let (mk_float:Num.num -> term) =
           mk_binop `float` (mk_int c) (mk_int (exp_a -/ exp_b))
           else failwith "mk_float";;
 
-add_test("mk_float",
+let _ = add_test("mk_float",
    mk_float (num (4096+32)) = `float (int_of_num 129) (int_of_num 5)` &&
    (mk_float (num 0) = `float (int_of_num 0) (int_of_num 0)`));;
 
-add_test("mk_float2",  (* throws exception exactly when denom != 2^k *)
+let _ = add_test("mk_float2",  (* throws exception exactly when denom != 2^k *)
    let rtest = fun t -> (t =/ dest_float (mk_float t)) in
    rtest ((num 3)//(num 1024)) &&
   (cannot rtest ((num 1)//(num 3))));;
 
-add_test("mk_float dest_float",  (* constructs canonical form of float *)
+let _ = add_test("mk_float dest_float",  (* constructs canonical form of float *)
   mk_float (dest_float `float (int_of_num 4) (int_of_num 3)`) = `float (int_of_num 1) (int_of_num 5)`);;
 
 (* ------------------------------------------------------------------ *)
@@ -181,21 +181,23 @@ add_test("mk_float dest_float",  (* constructs canonical form of float *)
 let (mk_pos_decimal:Num.num -> term) =
   let zero = `#0` in
   function r ->
-    let _ = assert (r >=/ (num 0)) in
+    let _ = if r >=/ (num 0) then () else
+      raise (Assert_failure ("text_formalization/jordan/float.hl",184,0)) in
     let (a,b) = split_ratio r in
     if (a=/(num 0)) then zero else
     let (a1,exp_a5) = factor_C 5 a in
     let (a2,exp_a2) = factor_C 2 a1 in
     let (b1,exp_b5) = factor_C 5 b in
     let (b2,exp_b2) = factor_C 2 b1 in
-    let _ = assert(b2 =/ (num 1)) in
+    let _ = if b2 =/ (num 1) then () else
+      raise (Assert_failure ("text_formalization/jordan/float.hl",191,0)) in
     let c = end_itlist Num.max_num [exp_b5-/exp_a5;exp_b2-/exp_a2;(num 0)] in
     let a' = a2*/((num 2)**/ (c +/ exp_a2 -/ exp_b2))*/
              ((num 5)**/(c +/ exp_a5 -/ exp_b5)) in
     let b' = (num 10) **/ c in
     mk_binop `DECIMAL` (mk_numeral a') (mk_numeral b');;
 
-add_test("mk_pos_decimal",
+let _ = add_test("mk_pos_decimal",
    mk_pos_decimal (num (5000)) = `#5000` &&
    (mk_pos_decimal ((num 30)//(num 40)) = `#0.75`) &&
    (mk_pos_decimal (num 0) = `#0`) &&
@@ -209,7 +211,7 @@ let (mk_decimal:Num.num->term) =
   let b = mk_pos_decimal (Num.abs_num r) in
   if (a < 0) then (mk_comb (`real_neg`, b)) else b;;
 
-add_test("mk_decimal",
+let _ = add_test("mk_decimal",
   (mk_decimal (num 3) = `#3`) &&
   (mk_decimal (num (-3)) = `real_neg  (#3)`));;
 
@@ -224,9 +226,9 @@ let (dest_decimal:term -> Num.num) =
     let b1 = dest_numeral b in
         a1//b1;;
 
-add_test("dest_decimal",
+let _ = add_test("dest_decimal",
    dest_decimal `#3.4` =/ ((num 34)//(num 10)));;
-add_test("dest_decimal2",
+let _ = add_test("dest_decimal2",
    cannot dest_decimal `real_neg  (#3.4)`);;
 
 
@@ -622,7 +624,7 @@ let FLOAT_CONV =
               INT_ADD_NEG;INT_ADD_NEGv2 (* ; ARITH *)
               ]) ;;
 
-add_test("FLOAT_CONV1",
+let _ = add_test("FLOAT_CONV1",
   let f z =
     let (x,y) =  dest_eq z in
     let (u,v) =  dest_thm (FLOAT_CONV x) in
@@ -1070,7 +1072,7 @@ EVERY[
 
 
 
-test();;
+let _ = test();;
 
 
 (* conversion for interval_eps *)
@@ -1096,7 +1098,7 @@ let (num_exponent:Num.num -> Num.num) =
     let afloat = float_of_num (abs_num a) in
     num ((snd (frexp afloat)) - 1);;
 
-(*test*)let f (u,v) = ((num_exponent u) =(num v)) in
+(*test*) let _ = let f (u,v) = ((num_exponent u) =(num v)) in
     add_test("num_exponenwt",
                 forall f
     [num 1,0; num 65,6; num (-65),6;
@@ -1145,8 +1147,8 @@ let (round_outward_float: int -> float -> Num.num) =
  fun  bprec f ->
   if (f=0.0) then (num 0) else
   begin
-    let b = abs_float f in
-    let sign = if (f >= 0.0) then I else minus_num in
+    let b = float_fabs f in
+    let sign = if Cake.Double.(>=) f 0.0 then I else minus_num in
     let (x,n) = frexp b in
     let u = int_of_float( ceil (ldexp x bprec)) in
     sign ((num u)*/ ((num 2) **/ (num (n - bprec))))
@@ -1158,8 +1160,8 @@ let (round_inward_float: int -> float -> Num.num) =
   begin
     (* avoid overflow on 30 bit integers *)
     let bprec = if (bprec > 25) then 25 else bprec in
-    let b = abs_float f in
-    let sign = if (f >= 0.0) then I else minus_num in
+    let b = float_fabs f in
+    let sign = if Cake.Double.(>=) f 0.0 then I else minus_num in
     let (x,n) = frexp b in
     let u = int_of_float( floor (ldexp x bprec)) in
     sign ((num u)*/ ((num 2) **/ (num (n - bprec))))
@@ -1172,7 +1174,7 @@ let SUBST_TERM sublist tm =
   rhs (concl ((SPECL (map fst sublist)) (GENL (map snd sublist)
                                           (REFL tm))));;
 
-add_test("SUBST_TERM",
+let _ = add_test("SUBST_TERM",
  SUBST_TERM [(`#1`,`a:real`);(`#2`,`b:real`)] (`a +. b +. c`) =
  `#1 + #2 + c`);;
 
@@ -1189,7 +1191,7 @@ let INTERVAL_CLEAN_CONV:conv =
     let ixfthm = AP_TERM ix fthm in
     MK_COMB (ixfthm, exthm);;
 
-(*test*) add_test("INTERVAL_CLEAN_CONV",
+(*test*) let _ = add_test("INTERVAL_CLEAN_CONV",
   let testval = INTERVAL_CLEAN_CONV `interval_eps ((&.1) +. (&.1))
        (float (int_of_num 3) (int_of_num 4) +. (float (int_of_num 2) (--: (int_of_num 3))))
        (float (int_of_num 1) (int_of_num 2) *. (float (int_of_num 3) (--: (int_of_num 2))))` in
@@ -1377,7 +1379,7 @@ let INTERVAL_OF_NUM:conv =
     interval_rule (SYM (AP_TERM `real_of_num` th_r)) th_int;;
 
 
-add_test("INTERVAL_OF_NUM",
+let _ = add_test("INTERVAL_OF_NUM",
    dest_thm (INTERVAL_OF_NUM `&.3`) = ([],
    `interval_eps (&3) (float (int_of_num 3) (int_of_num 0)) (float (int_of_num 0) (int_of_num 0))`));;
 
@@ -1395,7 +1397,7 @@ let FLOAT_INEQ_CONV t =
   let _ =  (rhs = `T`) || raise Insufficient_precision in
      EQ_MP (SYM th) TRUTH;;
 
-add_test("FLOAT_INEQ_CONV",
+let _ = add_test("FLOAT_INEQ_CONV",
   let f c x =
     dest_thm (c x) = ([],x) in
   let t1 =
@@ -1415,14 +1417,14 @@ let INTERVAL_TO_LESS_CONV =
 
 
 
-add_test("INTERVAL_TO_LESS_CONV",
+let _ = add_test("INTERVAL_TO_LESS_CONV",
   let thm1 = ASSUME
    `interval_eps (#0.1) (float (int_of_num 1) (--: (int_of_num 1))) (float (int_of_num 1) (--: (int_of_num 2)))` in
   let thm2 = ASSUME `interval_eps (#7) (float (int_of_num 4) (int_of_num 1)) (float (int_of_num 1) (int_of_num 0))` in
   let thm3 = INTERVAL_TO_LESS_CONV thm1 thm2 in
     concl thm3 = `#0.1 <. (#7)`);;
 
-add_test("INTERVAL_TO_LESS_CONV2",
+let _ = add_test("INTERVAL_TO_LESS_CONV2",
    let (h,c) = dest_thm (INTERVAL_TO_LESS_CONV
      (INTERVAL_OF_NUM `&.3`) (INTERVAL_OF_NUM `&.8`)) in
      (h=[]) && (c = `&.3 <. (&.8)`));;
@@ -1455,7 +1457,7 @@ let DEC_FLOAT = EQT_ELIM o
        REAL_OF_NUM_POW;INT_NUM_REAL;REAL_OF_NUM_MUL;
        lemma1;lemma2;lemma3];;
 
-add_test("DEC_FLOAT",
+let _ = add_test("DEC_FLOAT",
    let f c x =
       dest_thm (c x) = ([],x) in
    ((f DEC_FLOAT `#10.0 <= (float (int_of_num 3) (int_of_num 2))`) &&
@@ -1535,7 +1537,8 @@ let INTERVAL_OF_DECIMAL bprec dec =
   let a_num = dest_decimal dec in
   let f_num = round_rat bprec a_num in
   let ex_num = round_rat bprec (Num.abs_num (f_num -/ a_num)) in
-  let _ = assert (ex_num <=/ f_num) in
+  let _ = if ex_num <=/ f_num then () else
+    raise (Assert_failure ("text_formalization/jordan/float.hl",1538,0)) in
   let f = mk_float f_num in
   let ex= mk_float ex_num in
   let fplus_ex = FLOAT_CONV (mk_binop `real_add` f ex) in
@@ -1547,12 +1550,12 @@ let INTERVAL_OF_DECIMAL bprec dec =
   let intv = mk_interval dec f ex in
   EQT_ELIM (SIMP_CONV[INTERVAL_MINMAX;fplus_ex;fminus_ex;th1;th2] intv);;
 
-add_test("INTERVAL_OF_DECIMAL",
+let _ = add_test("INTERVAL_OF_DECIMAL",
   let (h,c) = dest_thm (INTERVAL_OF_DECIMAL 4 `#36.1`) in
   let (x,f,ex) = dest_interval c in
    (h=[]) && (x = `#36.1`));;
 
-add_test("INTERVAL_OF_DECIMAL2",
+let _ = add_test("INTERVAL_OF_DECIMAL2",
  can (fun() -> INTERVAL_TO_LESS_CONV (INTERVAL_OF_DECIMAL 4 `#33.33`)
   (INTERVAL_OF_DECIMAL 4 `#36.1`)) ());;
 
@@ -1678,7 +1681,8 @@ let  division_ez bprec (f,ex,g,ey) =
     let ez_rat = (ex_num +/ abs_num (f_num -/ (h_num*/ g_num))
         +/ (abs_num h_num */ ey_num))//((abs_num g_num) -/ (ey_num)) in
     let ez_num = round_rat bprec (ez_rat) in
-    let _ = assert((ez_num >=/ (num 0))) in
+    let _ = if ez_num >=/ (num 0) then () else
+      raise (Assert_failure ("text_formalization/jordan/float.hl",1681,0)) in
     let ez = mk_float ez_num 
     in (h,ez);;
 
