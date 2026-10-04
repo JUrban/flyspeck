@@ -1734,6 +1734,36 @@ let (prove,
 
 let candle_nonlinear_iarg_leaf_visits = ref 0;;
 
+(* A computed checker may provide an already proved leaf at this exact
+   reconstruction boundary.  The consumer remains authoritative about the
+   requested source identity and proposition: providers cannot redirect a
+   label, add assumptions, or return a merely related theorem.  Returning
+   None preserves the authenticated legacy importer as the fallback while
+   reflected coverage is introduced incrementally. *)
+let candle_nonlinear_reflected_leaf_provider :
+    (string -> int -> term -> thm option) ref =
+  ref (fun _ _ _ -> None);;
+
+let candle_nonlinear_reflected_leaf_attempts = ref 0;;
+let candle_nonlinear_reflected_leaf_successes = ref 0;;
+
+let candle_nonlinear_import_leaf s i tm =
+  let _ = candle_nonlinear_reflected_leaf_attempts :=
+    !candle_nonlinear_reflected_leaf_attempts + 1 in
+  match !candle_nonlinear_reflected_leaf_provider s i tm with
+  | None ->
+      let label = "(" ^ s ^ "," ^ string_of_int i ^ "):" in
+        Serialization.mk_nonlinear_legacy_ser_thm label tm
+  | Some theorem ->
+      let _ =
+        hyp theorem = [] && aconv (concl theorem) tm ||
+        failwith
+          ("reflected nonlinear leaf contract mismatch " ^ s ^ " " ^
+           string_of_int i) in
+      let _ = candle_nonlinear_reflected_leaf_successes :=
+        !candle_nonlinear_reflected_leaf_successes + 1 in
+        theorem;;
+
 let rec prove_iargs tm = 
   let (_,[x;d;f]) = strip_comb tm in
     function
@@ -1771,8 +1801,7 @@ let prove_iargs_cases tm iarg =
 let rec candle_nonlinear_import_leaves s i = function
     [] -> []
   | tm::rest ->
-      let label = "(" ^ s ^ "," ^ string_of_int i ^ "):" in
-      let th = Serialization.mk_nonlinear_legacy_ser_thm label tm in
+      let th = candle_nonlinear_import_leaf s i tm in
         th :: candle_nonlinear_import_leaves s (i + 1) rest;;
 
 let prove_serialize_processed_idq s t iarg =

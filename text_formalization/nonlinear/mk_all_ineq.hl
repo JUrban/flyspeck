@@ -408,9 +408,17 @@ let _ =
   failwith "nonlinear serialized leaf coverage mismatch";;
 
 let _ =
-  !Serialization.nonlinear_legacy_import_attempts = 23242 &&
-  !Serialization.nonlinear_legacy_import_successes = 23242 ||
-  failwith "nonlinear legacy import coverage mismatch";;
+  let reflected_attempts =
+    !Break_case_exec.candle_nonlinear_reflected_leaf_attempts in
+  let reflected_successes =
+    !Break_case_exec.candle_nonlinear_reflected_leaf_successes in
+  let legacy_attempts = !Serialization.nonlinear_legacy_import_attempts in
+  let legacy_successes = !Serialization.nonlinear_legacy_import_successes in
+    reflected_attempts = 23242 &&
+    reflected_successes >= 0 &&
+    legacy_attempts = legacy_successes &&
+    reflected_successes + legacy_successes = 23242 ||
+    failwith "nonlinear reflected/legacy leaf coverage mismatch";;
 
 let prep_thms = map (fun s -> assoc s prep_nonlinear_thml) 
   (map (fun t -> t.idv) !Prep.prep_ineqs);;
