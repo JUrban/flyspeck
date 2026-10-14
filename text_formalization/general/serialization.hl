@@ -21,7 +21,11 @@ needs "general/prove_by_refinement.hl";;
 
 (* #load "str.cma";; *)
 
-module Serialization = struct
+(* Candle's interactive compiler has to elaborate a complete module body as
+   one unit.  Late in the cumulative Flyspeck session that temporary unit no
+   longer fits in the original fixed heap.  Keep the source-level API below,
+   but elaborate the implementation in independent bounded units. *)
+module Serialization_collections = struct
 
 
 (* state manager should reset new_type_abbrev and the_implicit_types. *)
@@ -106,6 +110,12 @@ module Nonlinear_import_map = struct
         else find label right;;
 end;;
 
+end;;
+
+module Serialization_canon = struct
+
+open Serialization_collections;;
+
 (* remove duplicate entrie from a list *)
 
 let rec nub = function (* from lpproc.ml *)
@@ -184,6 +194,12 @@ let canonize_thm th =
   let eq = ALPHA (concl th3) t in
   let th4 =   EQ_MP eq th3 in
     funpow n UNDISCH th4;;
+
+end;;
+
+module Serialization_dependencies = struct
+
+open Serialization_canon;;
 
 (* ********************************************************************** *)
 (* extract type constants and term constants from types and terms *)
@@ -293,6 +309,13 @@ is_var `deserialization` || failwith "deserialization variable already in use";;
 let is_deserial_axiom th = 
   hyp th = [] && is_deserial (concl th);;
 
+end;;
+
+module Serialization_digest = struct
+
+open Serialization_canon;;
+open Serialization_dependencies;;
+
 (* ********************************************************************** *)
 (* serializing and digesting types and terms 
   By serialization, we mean faithfully mapping types, terms, 
@@ -342,6 +365,14 @@ simple_digest_thm (canonize_thm REAL_LE_TRANS) =  "0a27c9abba9dc352b772ca75bf62b
 let example1 = 
   let ETA2 = (canonize_thm ETA_AX) in
     (ETA2,serialize_thm ETA2,simple_digest_thm ETA2);; (* "65bb2b4953a56dda9bee095ce9660e56" *)
+
+end;;
+
+module Serialization_type_table = struct
+
+open Serialization_canon;;
+open Serialization_dependencies;;
+open Serialization_digest;;
 
 
 (* ********************************************************************** *)
@@ -400,10 +431,23 @@ let get_simple_table_typ =
       let _ = add_ind(); add_def() in
 	try Hashtbl.find current_canon sty with Not_found -> failwith ("Missing type: "^sty);;
 
+end;;
+
+module Serialization_term_table = struct
+
+open Serialization_canon;;
+open Serialization_dependencies;;
+open Serialization_digest;;
+
 let get_simple_table_term =
   let len_inductive_types = ref 0 in
   let len_type_definitions = ref 0 in 
   let len_definitions = ref 0 in
+  (* Building the complete term-history cache at module elaboration exhausts
+     Candle's late-session fixed heap.  The historical miss path already
+     refreshes this cache; include the one-time stray table in that same path
+     so the lookup result is unchanged while initialization is demand-driven. *)
+  let initialized = ref false in
   let current_canon = Hashtbl.create 2000 in
   let _ = Hashtbl.clear current_canon in
   let add (ty,th) = Hashtbl.add current_canon ty th in
@@ -439,11 +483,30 @@ let get_simple_table_term =
 	   xs) hd in
     let _ = len_definitions := n in 
       () in
-  let _ = add_table_typed_term table_stray_typ (List.length table_stray_typ) in
-  let _ = add_table_term(); add_ind(); add_typed_term();  in
+  let refresh () =
+    let _ =
+      if !initialized then ()
+      else
+        let _ =
+          add_table_typed_term table_stray_typ
+            (List.length table_stray_typ) in
+        let _ = initialized := true in
+          () in
+    let _ = add_table_term(); add_ind(); add_typed_term() in
+      () in
     fun sty -> try Hashtbl.find current_canon sty with Not_found ->
-      let _ = add_table_term(); add_ind(); add_typed_term();  in
+      let _ = refresh() in
 	try Hashtbl.find current_canon sty with Not_found -> failwith ("Missing term: "^sty);;
+
+end;;
+
+module Serialization_history = struct
+
+open Serialization_canon;;
+open Serialization_dependencies;;
+open Serialization_digest;;
+open Serialization_type_table;;
+open Serialization_term_table;;
 
 
 let assocs s xl = 
@@ -488,26 +551,54 @@ let get_history_thm1 =
   let tm_ignore = ["=";"fun";"@";deserial] in
   let mk th = let c = canonize_thm th in (simple_digest_thm c),c in
   let sort_uniq = uniq o (sort (fun a b -> String.compare (fst a) (fst b) < 0)) in
-  let axiom_reduced = filter (fun t -> not(is_deserial_axiom t)  ) (axioms()) in
-  let d_axiom = map mk (axiom_reduced) in
-  let ax_history = sort_uniq (List.flatten 
-				(map (get_history_thm_rec2 ty_ignore tm_ignore) d_axiom)) in
+  let ax_history = ref None in
+  let get_ax_history () =
+    match !ax_history with
+      Some history -> history
+    | None ->
+        let axiom_reduced =
+          filter (fun t -> not(is_deserial_axiom t)) (axioms()) in
+        let d_axiom = map mk axiom_reduced in
+        let history =
+          sort_uniq
+            (List.flatten
+               (map (get_history_thm_rec2 ty_ignore tm_ignore) d_axiom)) in
+        let _ = ax_history := Some history in
+          history in
     fun th ->
-      sort_uniq (ax_history @ get_history_thm_rec2 ty_ignore tm_ignore (mk th));;
+      sort_uniq
+        (get_ax_history () @
+         get_history_thm_rec2 ty_ignore tm_ignore (mk th));;
 
 (* ********************************************************************** *)
 (* the full digest takes the entire history of the theorem into account,
    it puts the history in sorted order then takes the hash *)
 (* ********************************************************************** *)
 
-let full_digest_thm th = 
+let full_digest_thm_unchecked th =
   let history =  (get_history_thm1) th in
   let h2 =  (map fst) history in
   let h4 =  (String.concat " " o nub o  (sort (fun a b -> String.compare a b < 0))) h2 in
     Digest.to_hex (Digest.string h4);;
 
-full_digest_thm ETA_AX =  "63e9b5b016229a78bb720593f38b0b3e" 
-      || failwith "full_digest_thm error";;
+(* Keep the historical ETA digest self-test, but run it with the first caller
+   that actually requests the ordinary full-history service.  The direct
+   nonlinear importer below uses its independently authenticated manifest and
+   surface digest, so it need not allocate this unrelated cache at load time. *)
+let full_digest_thm =
+  let self_test_complete = ref false in
+    fun th ->
+      let result = full_digest_thm_unchecked th in
+      let _ =
+        if !self_test_complete then ()
+        else
+          let eta_digest = full_digest_thm_unchecked ETA_AX in
+          let _ =
+            eta_digest = "63e9b5b016229a78bb720593f38b0b3e" ||
+            failwith "full_digest_thm error" in
+          let _ = self_test_complete := true in
+            () in
+        result;;
 
 (* TESTS:
 time full_digest_thm Pack2.PACKING;; (* "ba442e7e51b8bd5ee6903a114aa5eb8d" *)
@@ -530,7 +621,13 @@ let digest_thms some_thml =
        | Not_found -> (report ("cannot digest, not found: "^(string_of_thm t)); "")) 
     some_thml in
     filter (fun s -> not (s = "")) digests;;
-  
+
+end;;
+
+module Serialization_database = struct
+
+open Serialization_history;;
+
 (*
 let digest_list = 
   let _ = update_database() in
@@ -585,6 +682,17 @@ let add_thm th =
 
 let save_all_theorems () =
   failwith "Candle Flyspeck theorem-database export is disabled";;
+
+end;;
+
+module Serialization_import = struct
+
+open Serialization_collections;;
+open Serialization_canon;;
+open Serialization_dependencies;;
+open Serialization_digest;;
+open Serialization_history;;
+open Serialization_database;;
 
 
 let set_of_string sl = 
@@ -728,6 +836,14 @@ let mk_nonlinear_legacy_ser_thm label t =
   let d = deserialization_axiom() in
     PROVE_HYP d th;;
 
+end;;
+
+module Serialization_tactics = struct
+
+open Serialization_dependencies;;
+open Serialization_database;;
+open Serialization_import;;
+
 (* ********************************************************************** *)
 (* The remaining functions in the module are used to
    load the entire HOL Light session quickly, by skipping
@@ -870,5 +986,34 @@ let des_prove_explicit(g,tac) =
   let g' = deserial_imp g in deserial_un(
       REWRITE_RULE[if_deserial_axiom()] (prove(g',deserial_dt THEN tac)));;
 *)
+
+end;;
+
+(* Preserve the historical public interface used by the remaining Flyspeck
+   sources.  These bindings alias the implementation values; mutable cells and
+   hash tables are therefore shared rather than copied. *)
+module Serialization = struct
+
+let canonize_thm = Serialization_canon.canonize_thm;;
+let simple_digest_thm = Serialization_digest.simple_digest_thm;;
+
+let hash2 = Serialization_history.hash2;;
+let full_digest_thm = Serialization_history.full_digest_thm;;
+
+let nonlinear_legacy_import_attempts =
+  Serialization_import.nonlinear_legacy_import_attempts;;
+let nonlinear_legacy_import_successes =
+  Serialization_import.nonlinear_legacy_import_successes;;
+let deserialization_axiom = Serialization_import.deserialization_axiom;;
+let has_deserialization_axiom =
+  Serialization_import.has_deserialization_axiom;;
+let use_serialization = Serialization_import.use_serialization;;
+let mk_ser_thm = Serialization_import.mk_ser_thm;;
+let mk_nonlinear_legacy_ser_thm =
+  Serialization_import.mk_nonlinear_legacy_ser_thm;;
+
+let des_prove = Serialization_tactics.des_prove;;
+let des_prove_by_refinement =
+  Serialization_tactics.des_prove_by_refinement;;
 
 end;;
